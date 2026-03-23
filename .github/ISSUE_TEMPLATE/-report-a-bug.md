@@ -1,7 +1,7 @@
 ---
-name: Report a bug
+name: "\U0001F41E Report a bug"
 about: Report a problem with Ophelia.
-title: "[BUG]"
+title: "\U0001F41E [BUG]"
 labels: ''
 assignees: hystericca
 type: Bug
