@@ -1,7 +1,7 @@
 ---
-name: Bug report
-about: Create a report to help us improve
-title: ''
+name: Report a bug
+about: Report a problem with Ophelia.
+title: "[BUG]"
 labels: ''
 assignees: hystericca
 type: Bug
