@@ -1,7 +1,6 @@
 <p>
   <img src="assets/wordmark.svg" alt="ophelia" />
 </p>
-## The download manager from hell
 
 ---
 
