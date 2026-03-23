@@ -1,6 +1,5 @@
 use gpui::{div, prelude::*, px, App, Window};
-
-use crate::theme::{Colors, Typography};
+use crate::ui::prelude::*;
 
 /// Download list container
 /// shows recent downloads or empty state.
@@ -15,9 +14,9 @@ impl RenderOnce for DownloadList {
             // Section header
             .child(
                 div()
-                    .text_size(px(Typography::SIZE_XS))
+                    .text_xs()
                     .text_color(Colors::muted_foreground())
-                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .font_weight(gpui::FontWeight::BOLD)
                     .mb(px(12.0))
                     .child("RECENT"),
             )
@@ -37,8 +36,9 @@ impl RenderOnce for DownloadList {
                     )
                     .child(
                         div()
-                            .text_size(px(Typography::SIZE_SM))
+                            .text_sm()
                             .text_color(Colors::muted_foreground())
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
                             .child("No downloads yet"),
                     ),
             )

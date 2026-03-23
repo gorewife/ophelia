@@ -1,6 +1,6 @@
-use gpui::{div, prelude::*, px, App, SharedString, Window};
-
-use crate::theme::{Colors, Spacing, Typography};
+use gpui::{div, prelude::*, px, App, Hsla, SharedString, Window};
+use crate::ui::prelude::*;
+use crate::platform;
 
 /// Left sidebar
 /// logo, new download button, navigation, storage card
@@ -13,11 +13,11 @@ pub struct Sidebar;
 
 impl RenderOnce for Sidebar {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
-        let nav_items: Vec<(&str, &str)> = vec![
-            ("inbox", "Downloads"),
-            ("downloading", "Active"),
-            ("check_circle", "Finished"),
-            ("pause_circle", "Paused"),
+        let nav_items: Vec<(IconName, &str)> = vec![
+            (IconName::Inbox, "Downloads"),
+            (IconName::ArrowDownToLine, "Active"),
+            (IconName::CircleCheck, "Finished"),
+            (IconName::CirclePause, "Paused"),
         ];
 
         div()
@@ -29,30 +29,26 @@ impl RenderOnce for Sidebar {
             .border_r_1()
             .border_color(Colors::border())
             .bg(Colors::sidebar())
-            // macOS traffic light clearance
-            .child(div().h(px(Spacing::HEADER_HEIGHT)).flex_shrink_0())
-            // Logo section
+            // Logo row
             .child(
                 div()
                     .px(px(12.0))
-                    .mb(px(24.0))
+                    .pt(px(12.0))
+                    .mb(px(20.0))
                     .flex()
                     .items_center()
                     .gap(px(8.0))
-                    // TODO: replace with actual OphLogo SVG component
+                    .child(OpheliaLogo::new(44.0))
                     .child(
                         div()
-                            .size(px(28.0))
-                            .rounded_full()
-                            .bg(Colors::primary()),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(Typography::SIZE_MD))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .flex_1()
+                            .text_xl()
+                            .font_weight(gpui::FontWeight::BOLD)
+                            .text_color(Colors::foreground())
                             .child("ophelia"),
                     ),
             )
+
             // New Download button
             .child(
                 div()
@@ -64,13 +60,13 @@ impl RenderOnce for Sidebar {
                             .items_center()
                             .justify_center()
                             .w_full()
-                            .h(px(32.0))
+                            .h(px(36.0))
                             .rounded(px(6.0))
                             .bg(Colors::primary())
                             .text_color(Colors::background())
-                            .text_size(px(Typography::SIZE_SM))
-                            .font_weight(gpui::FontWeight::MEDIUM)
-                            .child("+ New Download"),
+                            .text_sm()
+                            .font_weight(gpui::FontWeight::BOLD)
+                            .child("+ Add Download"),
                     ),
             )
             // Separator
@@ -104,17 +100,17 @@ impl RenderOnce for Sidebar {
     }
 }
 
-/// A single navigation row: icon placeholder + label.
-fn nav_item(icon: &str, label: &str, active: bool) -> gpui::Div {
-    let bg = if active {
-        Colors::accent()
+/// A single navigation row: for now
+fn nav_item(icon: IconName, label: &str, active: bool) -> gpui::Div {
+    let bg: Hsla = if active {
+        Colors::muted().into()
     } else {
         gpui::transparent_black()
     };
-    let text = if active {
-        Colors::foreground()
+    let text: Hsla = if active {
+        Colors::foreground().into()
     } else {
-        Colors::muted_foreground()
+        Colors::muted_foreground().into()
     };
 
     div()
@@ -126,10 +122,9 @@ fn nav_item(icon: &str, label: &str, active: bool) -> gpui::Div {
         .rounded(px(6.0))
         .bg(bg)
         .text_color(text)
-        .text_size(px(Typography::SIZE_BASE))
-        .font_weight(gpui::FontWeight::MEDIUM)
-        // TODO: replace with actual icon rendering
-        .child(SharedString::from(icon.to_string()))
+        .text_sm()
+        .font_weight(gpui::FontWeight::SEMIBOLD)
+        .child(icon_sm(icon, text))
         .child(SharedString::from(label.to_string()))
 }
 
@@ -147,6 +142,7 @@ fn storage_card() -> gpui::Div {
         .border_color(Colors::border())
         .bg(Colors::card())
         // Header row: icon + "Storage" + percentage
+        // I know this is dumb but uhm it looks pretty
         .child(
             div()
                 .flex()
@@ -157,14 +153,14 @@ fn storage_card() -> gpui::Div {
                         .flex()
                         .items_center()
                         .gap(px(6.0))
-                        .text_size(px(Typography::SIZE_XS))
+                        .text_xs()
                         .text_color(Colors::muted_foreground())
-                        .child("database") // TODO: icon
+                        .child(icon_sm(IconName::HardDrive, Colors::muted_foreground()))
                         .child("Storage"),
                 )
                 .child(
                     div()
-                        .text_size(px(Typography::SIZE_XS))
+                        .text_xs()
                         .text_color(Colors::muted_foreground())
                         .child("62%"),
                 ),
@@ -172,14 +168,15 @@ fn storage_card() -> gpui::Div {
         // Available space
         .child(
             div()
-                .text_size(px(Typography::SIZE_MD))
-                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .text_base()
+                .font_weight(gpui::FontWeight::BOLD)
+                .text_color(Colors::foreground())
                 .child("284 GB"),
         )
         .child(
             div()
-                .text_size(px(Typography::SIZE_XS))
-                .text_color(Colors::muted_foreground())
+                .text_xs()
+                .text_color(Colors::secondary())
                 .child("available"),
         )
         // Progress bar

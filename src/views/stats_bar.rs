@@ -1,6 +1,5 @@
 use gpui::{div, prelude::*, px, App, Window};
-
-use crate::theme::{Colors, Spacing, Typography};
+use crate::ui::prelude::*;
 
 /// 4-column stats grid: speed, active, finished, total
 #[derive(IntoElement)]
@@ -34,15 +33,15 @@ fn stat_card(label: &str, value: &str) -> gpui::Div {
         .bg(Colors::card())
         .child(
             div()
-                .text_size(px(Typography::SIZE_XS))
+                .text_xs()
                 .text_color(Colors::muted_foreground())
-                .font_weight(gpui::FontWeight::MEDIUM)
+                .font_weight(gpui::FontWeight::SEMIBOLD)
                 .child(label.to_string()),
         )
         .child(
             div()
-                .text_size(px(Typography::SIZE_2XL))
-                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .text_2xl()
+                .font_weight(gpui::FontWeight::BOLD)
                 .child(value.to_string()),
         )
 }
