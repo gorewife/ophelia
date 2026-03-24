@@ -31,7 +31,7 @@ fn run() {
                     titlebar: platform::titlebar_options(),
                     ..Default::default()
                 },
-                |_, cx| cx.new(|_| MainWindow::new()),
+                |_, cx| cx.new(|cx| MainWindow::new(cx)),
             )
             .unwrap();
             cx.activate(true);

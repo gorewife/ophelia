@@ -1,18 +1,16 @@
-use gpui::{div, prelude::*, px, App, Hsla, SharedString, Window};
+use gpui::{div, prelude::*, px, Hsla, SharedString, Window};
 use crate::ui::prelude::*;
-use crate::platform;
 
 /// Left sidebar
 /// logo, new download button, navigation, storage card
 ///
-/// This is `RenderOnce` (stateless). It doesn't own any data; it just
-/// describes the layout. Later, you'll pass props into it (active nav
-/// filter, storage info, etc.) by adding fields to this struct.
-#[derive(IntoElement)]
-pub struct Sidebar;
+pub struct Sidebar {
+    pub active_item: usize,
+    pub collapsed: bool,
+}
 
-impl RenderOnce for Sidebar {
-    fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
+impl Render for Sidebar {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let nav_items: Vec<(IconName, &str)> = vec![
             (IconName::Inbox, "Downloads"),
             (IconName::ArrowDownToLine, "Active"),
@@ -20,37 +18,77 @@ impl RenderOnce for Sidebar {
             (IconName::CirclePause, "Paused"),
         ];
 
+        let width = if self.collapsed { 48.0 } else { Spacing::SIDEBAR_WIDTH };
+
         div()
             .flex()
             .flex_col()
-            .w(px(Spacing::SIDEBAR_WIDTH))
+            .w(px(width))
             .h_full()
             .flex_shrink_0()
             .border_r_1()
             .border_color(Colors::border())
             .bg(Colors::sidebar())
-            // Logo row
-            .child(
+            // Logo row — expanded: horizontal with toggle on right
+            .when(!self.collapsed, |el| el.child(
                 div()
                     .px(px(12.0))
                     .pt(px(12.0))
                     .mb(px(20.0))
                     .flex()
                     .items_center()
+                    .justify_between()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(8.0))
+                            .child(OpheliaLogo::new(44.0))
+                            .child(
+                                div()
+                                    .text_xl()
+                                    .font_weight(gpui::FontWeight::BOLD)
+                                    .text_color(Colors::foreground())
+                                    .child("ophelia")
+                            )
+                    )
+                    .child(
+                        div()
+                            .id("collapse-toggle")
+                            .flex()
+                            .items_center()
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.collapsed = !this.collapsed;
+                                cx.notify();
+                            }))
+                            .child(icon_sm(IconName::PanelLeftClose, Colors::muted_foreground()))
+                    )
+            ))
+            // Logo row — collapsed: vertical, toggle below logo
+            .when(self.collapsed, |el| el.child(
+                div()
+                    .pt(px(12.0))
+                    .mb(px(20.0))
+                    .flex()
+                    .flex_col()
+                    .items_center()
                     .gap(px(8.0))
                     .child(OpheliaLogo::new(44.0))
                     .child(
                         div()
-                            .flex_1()
-                            .text_xl()
-                            .font_weight(gpui::FontWeight::BOLD)
-                            .text_color(Colors::foreground())
-                            .child("ophelia"),
-                    ),
-            )
+                            .id("collapse-toggle")
+                            .flex()
+                            .items_center()
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.collapsed = !this.collapsed;
+                                cx.notify();
+                            }))
+                            .child(icon_sm(IconName::PanelLeftOpen, Colors::muted_foreground()))
+                    )
+            ))
 
-            // New Download button
-            .child(
+            // Add Download button
+            .when(!self.collapsed, |el| el.child(
                 div()
                     .px(px(12.0))
                     .mb(px(16.0))
@@ -68,7 +106,24 @@ impl RenderOnce for Sidebar {
                             .font_weight(gpui::FontWeight::BOLD)
                             .child("+ Add Download"),
                     ),
-            )
+            ))
+            .when(self.collapsed, |el| el.child(
+                div()
+                    .flex()
+                    .justify_center()
+                    .mb(px(16.0))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .w(px(36.0))
+                            .h(px(36.0))
+                            .rounded(px(6.0))
+                            .bg(Colors::active())
+                            .child(icon_sm(IconName::Plus, Colors::background())),
+                    ),
+            ))
             // Separator
             .child(
                 div()
@@ -84,24 +139,29 @@ impl RenderOnce for Sidebar {
                     .flex()
                     .flex_col()
                     .gap(px(2.0))
-                    .children(nav_items.into_iter().enumerate().map(|(i, (icon, label))| {
-                        let is_active = i == 0; // first item active by default
-                        nav_item(icon, label, is_active)
+                    .children(nav_items.into_iter().enumerate().map(|(i, (icon_name, label))| {
+                        let is_active = i == self.active_item;
+                        nav_item(icon_name, label, is_active, self.collapsed)
+                            .id(i)
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.active_item = i;
+                                cx.notify();
+                            }))
                     })),
             )
             // Spacer pushes storage card to bottom
             .child(div().flex_1())
             // Storage card
-            .child(
+            .when(!self.collapsed, |el| el.child(
                 div()
                     .p(px(12.0))
                     .child(storage_card()),
-            )
+            ))
     }
 }
 
 /// A single navigation row: for now
-fn nav_item(icon: IconName, label: &str, active: bool) -> gpui::Div {
+fn nav_item(icon_name: IconName, label: &str, active: bool, collapsed: bool) -> gpui::Div {
     let bg: Hsla = if active {
         Colors::muted().into()
     } else {
@@ -116,6 +176,7 @@ fn nav_item(icon: IconName, label: &str, active: bool) -> gpui::Div {
     div()
         .flex()
         .items_center()
+        .when(collapsed, |el| el.justify_center())
         .gap(px(12.0))
         .px(px(12.0))
         .py(px(8.0))
@@ -124,8 +185,8 @@ fn nav_item(icon: IconName, label: &str, active: bool) -> gpui::Div {
         .text_color(text)
         .text_sm()
         .font_weight(gpui::FontWeight::SEMIBOLD)
-        .child(icon_sm(icon, text))
-        .child(SharedString::from(label.to_string()))
+        .child(icon(icon_name, px(18.0), text))
+        .when(!collapsed, |el| el.child(SharedString::from(label.to_string())))
 }
 
 /// Storage info card at the bottom of the sidebar.

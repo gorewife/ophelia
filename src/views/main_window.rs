@@ -1,4 +1,4 @@
-use gpui::{div, prelude::*, px, Context, Window};
+use gpui::{div, prelude::*, px, Context, Entity, Window};
 
 use crate::ui::prelude::*;
 use crate::theme::Spacing;
@@ -12,11 +12,15 @@ use crate::platform;
 ///
 /// This is the only `Render` (stateful) view at the top level.
 /// It composes the sidebar and main content area side by side.
-pub struct MainWindow;
+pub struct MainWindow {
+    sidebar: Entity<Sidebar>,
+}
 
 impl MainWindow {
-    pub fn new() -> Self {
-        Self
+    pub fn new(cx: &mut Context<Self>) -> Self {
+        Self {
+            sidebar: cx.new(|_| Sidebar { active_item: 0, collapsed: false }),
+        }
     }
 }
 
@@ -48,7 +52,7 @@ impl Render for MainWindow {
                     .flex()
                     .flex_1()
                     .overflow_hidden()
-                    .child(Sidebar)
+                    .child(self.sidebar.clone())
                     .child(
                         div()
                             .flex()

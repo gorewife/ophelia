@@ -8,6 +8,8 @@ pub enum IconName {
     CircleCheck,
     CirclePause,
     Database,
+    PanelLeftClose,
+    PanelLeftOpen,
     Plus,
     Settings
 }
@@ -21,6 +23,8 @@ impl IconName {
             Self::CirclePause => "circle-pause",
             Self::Database => "database",
             Self::Plus => "plus",
+            Self::PanelLeftClose => "panel-left-close",
+            Self::PanelLeftOpen => "panel-left-open",
             Self::Settings => "settings"
         };
         SharedString::from(format!("icons/{name}.svg"))
