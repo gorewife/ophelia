@@ -7,10 +7,7 @@ use futures::StreamExt;
 use tokio::sync::mpsc;
 
 use crate::engine::chunk;
-use crate::engine::types::{DownloadId, DownloadStatus, ProgressUpdate};
-
-const DEFAULT_CHUNKS: usize = 8;
-const WRITE_BUFFER_SIZE: usize = 64 * 1024;
+use crate::engine::types::{DownloadId, DownloadStatus, DownloadConfig, ProgressUpdate};
 
 struct ProbeResult {
     content_length: Option<u64>,
@@ -51,6 +48,7 @@ pub async fn download_task(
     id: DownloadId,
     url: String,
     destination: PathBuf,
+    config: DownloadConfig,
     progress_tx: mpsc::UnboundedSender<ProgressUpdate>,
 ) {
     let send = |status: DownloadStatus, downloaded: u64, total: Option<u64>, speed: u64| {
@@ -101,10 +99,12 @@ pub async fn download_task(
 
     // 3. Split into chunks
     let num_chunks = if probe_result.accepts_ranges {
-        DEFAULT_CHUNKS
+        config.max_connections
     } else {
         1
     };
+    let write_buffer_size = config.write_buffer_size;
+    let progress_interval_ms = config.progress_interval_ms;
     let chunks = chunk::split(total_bytes, num_chunks);
 
     // 4. Shared progress: one atomic counter per chunk
@@ -124,7 +124,7 @@ pub async fn download_task(
         let end = chunks.ends[i];
 
         let handle = tokio::spawn(async move {
-            download_chunk(&client, &url, start, end, &file, &counters, i).await
+            download_chunk(&client, &url, start, end, &file, &counters, i, write_buffer_size).await
         });
         handles.push(handle);
     }
@@ -136,7 +136,7 @@ pub async fn download_task(
         let started = Instant::now();
         tokio::spawn(async move {
             loop {
-                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                tokio::time::sleep(tokio::time::Duration::from_millis(progress_interval_ms)).await;
                 let total_downloaded: u64 = counters
                     .iter()
                     .map(|a| a.load(Ordering::Relaxed))
@@ -197,19 +197,20 @@ async fn download_chunk(
     file: &std::fs::File,
     counters: &[AtomicU64],
     index: usize,
+    write_buffer_size: usize,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let range = format!("bytes={}-{}", start, end - 1);
     let response = client.get(url).header("Range", range).send().await?;
 
     let mut stream = response.bytes_stream();
     let mut offset = start;
-    let mut buffer = Vec::with_capacity(WRITE_BUFFER_SIZE);
+    let mut buffer = Vec::with_capacity(write_buffer_size);
 
     while let Some(chunk) = stream.next().await {
         let bytes = chunk?;
         buffer.extend_from_slice(&bytes);
 
-        if buffer.len() >= WRITE_BUFFER_SIZE {
+        if buffer.len() >= write_buffer_size {
             write_at(file, &buffer, offset)?;
             offset += buffer.len() as u64;
             counters[index].fetch_add(buffer.len() as u64, Ordering::Relaxed);

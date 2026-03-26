@@ -31,10 +31,10 @@ impl DownloadEngine {
         }
     }
 
-    pub fn add(&mut self, url: String, destination: PathBuf) -> DownloadId {
+    pub fn add(&mut self, url: String, destination: PathBuf, config: DownloadConfig) -> DownloadId {
         let id = DownloadId(self.next_id);
         self.next_id += 1;
-        let _ = self.cmd_tx.send(EngineCommand::Add { id, url, destination });
+        let _ = self.cmd_tx.send(EngineCommand::Add { id, url, destination, config });
         id
     }
 
@@ -58,9 +58,9 @@ impl DownloadEngine {
 
         while let Some(cmd) = cmd_rx.recv().await {
             match cmd {
-                EngineCommand::Add { id, url, destination } => {
+                EngineCommand::Add { id, url, destination, config } => {
                     let tx = progress_tx.clone();
-                    let handle = tokio::spawn(download_task(id, url, destination, tx));
+                    let handle = tokio::spawn(download_task(id, url, destination, config, tx));
                     tasks.insert(id, handle);
                 }
                 EngineCommand::Pause { id } => {
