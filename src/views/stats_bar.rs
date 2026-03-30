@@ -124,12 +124,12 @@ fn network_graph(download: Vec<f32>, upload: Vec<f32>) -> impl IntoElement {
             let dl = to_pts(&download);
             let ul = to_pts(&upload);
 
-            // Horizontal grid guides only — cleaner homelab look
+            // Horizontal grid guides only
             for frac in [0.25_f32, 0.5, 0.75] {
                 hline(window, gx, gx + gw, gy + gh * frac, grid);
             }
 
-            // Upload (drawn first — sits behind download)
+            // Upload (drawn first, sits behind download)
             smooth_area(window, &ul, gx, gy + gh, gx + gw, ul_fill);
             smooth_stroke(window, &ul, 1.0, ul_line);
 
@@ -137,7 +137,7 @@ fn network_graph(download: Vec<f32>, upload: Vec<f32>) -> impl IntoElement {
             smooth_area(window, &dl, gx, gy + gh, gx + gw, dl_fill);
             smooth_stroke(window, &dl, 1.5, dl_line);
 
-            // Live indicator — single dot at latest value
+            // Live indicator, single dot at latest value
             if let Some(&(cx, cy)) = dl.last() {
                 dot(window, cx, cy, 3.0, dl_line);
             }
@@ -206,7 +206,7 @@ fn sample_spline(pts: &[(f32, f32)], steps_per_seg: usize) -> Vec<(f32, f32)> {
 }
 
 /// Filled area under a smooth catmull-rom curve. Uses native cubic_bezier_to
-/// on PathBuilder — one single paint_path call for the entire area.
+/// on PathBuilder, one single paint_path call for the entire area.
 fn smooth_area(
     window: &mut Window,
     pts: &[(f32, f32)],

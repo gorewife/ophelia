@@ -1,6 +1,7 @@
 mod app;
 mod assets;
 mod engine;
+mod logging;
 mod platform;
 mod theme;
 mod ui;
@@ -39,5 +40,6 @@ fn run() {
 }
 
 fn main() {
+    let _log_guard = logging::init();
     run();
 }

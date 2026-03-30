@@ -1,36 +1,77 @@
 use gpui::{div, prelude::*, px, Context, Entity, Window};
 
-use crate::ui::prelude::*;
-use crate::theme::Spacing;
-use crate::views::sidebar::Sidebar;
-use crate::views::stats_bar::StatsBar;
-use crate::views::download_list::DownloadList;
+use crate::app::Downloads;
+use crate::engine::http::HttpDownloadConfig;
 use crate::platform;
+use crate::theme::Spacing;
+use crate::ui::prelude::*;
+use crate::views::download_list::DownloadList;
+use crate::views::download_modal::{DownloadCancelled, DownloadConfirmed, DownloadModal};
+use crate::views::sidebar::{AddDownloadClicked, Sidebar};
+use crate::views::stats_bar::StatsBar;
 
 /// Root view
-/// owns the full window layout
-///
-/// This is the only `Render` (stateful) view at the top level.
-/// It composes the sidebar and main content area side by side.
+/// owns the full window layout and all live state.
 pub struct MainWindow {
     sidebar: Entity<Sidebar>,
+    downloads: Entity<Downloads>,
+    download_list: Entity<DownloadList>,
+    modal: Option<Entity<DownloadModal>>,
 }
 
 impl MainWindow {
     pub fn new(cx: &mut Context<Self>) -> Self {
+        let sidebar = cx.new(|_| Sidebar {
+            active_item: 0,
+            collapsed: false,
+            storage_used_bytes: 0,
+            storage_total_bytes: 0,
+        });
+
+        let downloads = cx.new(|cx| Downloads::new(cx));
+        let download_list = cx.new(|cx| DownloadList::new(downloads.clone(), cx));
+
+        // Open the modal when the sidebar Add button is clicked.
+        cx.subscribe(&sidebar, |this: &mut Self, _, _: &AddDownloadClicked, cx| {
+            this.open_modal(cx);
+        })
+        .detach();
+
         Self {
-            sidebar: cx.new(|_| Sidebar {
-                    active_item: 0,
-                    collapsed: false,
-                    storage_used_bytes: 0,
-                    storage_total_bytes: 0,
-                }),
+            sidebar,
+            downloads,
+            download_list,
+            modal: None,
         }
+    }
+
+    fn open_modal(&mut self, cx: &mut Context<Self>) {
+        let modal = cx.new(|cx| DownloadModal::new(cx));
+
+        cx.subscribe(&modal, |this: &mut Self, _, event: &DownloadConfirmed, cx| {
+            let url = event.url.clone();
+            let destination = event.destination.clone();
+            this.downloads.update(cx, |d, cx| {
+                d.add(url, destination, HttpDownloadConfig::default(), cx);
+            });
+            this.modal = None;
+            cx.notify();
+        })
+        .detach();
+
+        cx.subscribe(&modal, |this: &mut Self, _, _: &DownloadCancelled, cx| {
+            this.modal = None;
+            cx.notify();
+        })
+        .detach();
+
+        self.modal = Some(modal);
+        cx.notify();
     }
 }
 
 impl Render for MainWindow {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
             .flex_col()
@@ -49,7 +90,7 @@ impl Render for MainWindow {
                     .px(px(20.0))
                     .border_b_1()
                     .border_color(Colors::border())
-                    .child(icon_sm(IconName::Settings, Colors::muted_foreground()))
+                    .child(icon_sm(IconName::Settings, Colors::muted_foreground())),
             )
             // Sidebar + content below
             .child(
@@ -74,9 +115,11 @@ impl Render for MainWindow {
                                     .px(px(Spacing::CONTENT_PADDING_X))
                                     .py(px(Spacing::CONTENT_PADDING_Y))
                                     .child(StatsBar::new())
-                                    .child(DownloadList::new()),
+                                    .child(self.download_list.clone()),
                             ),
-                    )
+                    ),
             )
+            // Modal overlay (rendered last so it sits on top)
+            .when_some(self.modal.clone(), |el, modal| el.child(modal))
     }
 }

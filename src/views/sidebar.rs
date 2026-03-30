@@ -1,5 +1,7 @@
-use gpui::{div, prelude::*, px, Hsla, SharedString, Window};
+use gpui::{div, prelude::*, px, EventEmitter, Hsla, SharedString, Window};
 use crate::ui::prelude::*;
+
+pub struct AddDownloadClicked;
 
 /// Left sidebar
 /// logo, new download button, navigation, storage card
@@ -10,6 +12,8 @@ pub struct Sidebar {
     pub storage_used_bytes: u64,
     pub storage_total_bytes: u64,
 }
+
+impl EventEmitter<AddDownloadClicked> for Sidebar {}
 
 impl Render for Sidebar {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -31,7 +35,7 @@ impl Render for Sidebar {
             .border_r_1()
             .border_color(Colors::border())
             .bg(Colors::sidebar())
-            // Logo row — expanded: horizontal with toggle on right
+            // Logo row - expanded: horizontal with toggle on right
             .when(!self.collapsed, |el| el.child(
                 div()
                     .px(px(16.0))
@@ -66,7 +70,7 @@ impl Render for Sidebar {
                             .child(icon_sm(IconName::PanelLeftClose, Colors::muted_foreground()))
                     )
             ))
-            // Logo row — collapsed: vertical, toggle below logo
+            // Logo row - collapsed: vertical, toggle below logo
             .when(self.collapsed, |el| el.child(
                 div()
                     .pt(px(14.0))
@@ -96,6 +100,7 @@ impl Render for Sidebar {
                     .mb(px(18.0))
                     .child(
                         div()
+                            .id("add-download-btn")
                             .flex()
                             .items_center()
                             .justify_center()
@@ -106,6 +111,10 @@ impl Render for Sidebar {
                             .text_color(Colors::background())
                             .text_base()
                             .font_weight(gpui::FontWeight::BOLD)
+                            .cursor_pointer()
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.emit(AddDownloadClicked);
+                            }))
                             .child("+ Add Download"),
                     ),
             ))
@@ -116,6 +125,7 @@ impl Render for Sidebar {
                     .mb(px(18.0))
                     .child(
                         div()
+                            .id("add-download-btn-collapsed")
                             .flex()
                             .items_center()
                             .justify_center()
@@ -123,6 +133,10 @@ impl Render for Sidebar {
                             .h(px(40.0))
                             .rounded(px(8.0))
                             .bg(Colors::active())
+                            .cursor_pointer()
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.emit(AddDownloadClicked);
+                            }))
                             .child(icon_sm(IconName::Plus, Colors::background())),
                     ),
             ))

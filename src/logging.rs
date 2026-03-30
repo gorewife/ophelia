@@ -1,0 +1,72 @@
+//! Logging initialisation.
+//!
+//! Call `init()` once at startup and hold the returned `WorkerGuard` for the
+//! lifetime of the process. Dropping it shuts down the background writer
+//! thread and flushes any buffered log lines to disk.
+//!
+//! Log files are written to the platform log directory and rotated daily:
+//!   macOS:   ~/Library/Logs/Ophelia/ophelia.log.YYYY-MM-DD
+//!   Linux:   ~/.local/share/ophelia/logs/ophelia.log.YYYY-MM-DD
+//!   Windows: %APPDATA%\Ophelia\Logs\ophelia.log.YYYY-MM-DD
+//!
+//! Default level is INFO. Set RUST_LOG=debug for chunk-level detail.
+
+use std::path::PathBuf;
+
+use tracing_appender::non_blocking::WorkerGuard;
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
+
+pub fn init() -> WorkerGuard {
+    let log_dir = log_directory();
+    std::fs::create_dir_all(&log_dir).ok();
+
+    let file_appender = tracing_appender::rolling::daily(&log_dir, "ophelia.log");
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("info"));
+
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(fmt::layer().with_writer(non_blocking).with_ansi(false))
+        .init();
+
+    tracing::info!(version = env!("CARGO_PKG_VERSION"), "Ophelia starting");
+
+    guard
+}
+
+fn log_directory() -> PathBuf {
+    #[cfg(target_os = "macos")]
+    {
+        std::env::var("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join("Library/Logs/Ophelia")
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        std::env::var("XDG_DATA_HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| {
+                std::env::var("HOME")
+                    .map(|h| PathBuf::from(h).join(".local/share"))
+                    .unwrap_or_else(|_| PathBuf::from("."))
+            })
+            .join("ophelia/logs")
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::env::var("APPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join("Ophelia\\Logs")
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        PathBuf::from("logs")
+    }
+}
