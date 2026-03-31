@@ -1,19 +1,51 @@
 //! The download engine actor!
 //!
-//! Owns the tokio runtime and sits between the UI thread and download tasks
-//! Commands arrive over an mpsc channel; progress updates flow back the other way
-//! The task map and ID counter live inside the async run() loop so no mutexes needed
+//! Owns the tokio runtime and sits between the UI thread and download tasks.
+//! Commands arrive over an mpsc channel; progress updates flow back the other way.
+//! The task map and ID counter live inside the async run() loop so no mutexes needed.
+//!
+//! Pause/resume lifecycle:
+//!   Pause  → cancel the task's CancellationToken, await the handle, read chunk
+//!            offsets from the shared pause_sink, store in `paused` map.
+//!   Resume → look up the PausedTask, re-spawn download_task with saved snapshots.
+//!   Cancel → hard abort via JoinHandle::abort(), remove from both maps.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 
-use crate::engine::http::download_task;
-use crate::engine::http::HttpDownloadConfig;
+use crate::engine::http::{download_task, HttpDownloadConfig};
 use crate::engine::types::*;
+
+// --- per-task bookkeeping ------------------------------------------------
+
+/// Everything the engine needs to pause or cancel an active task.
+struct TaskEntry {
+    handle: JoinHandle<()>,
+    /// Fired on soft pause. Hard cancel uses handle.abort() instead.
+    pause_token: CancellationToken,
+    /// Written by the task on pause; read by the engine after awaiting the handle.
+    pause_sink: Arc<Mutex<Option<Vec<ChunkSnapshot>>>>,
+    /// Kept for re-spawning on resume.
+    url: String,
+    destination: PathBuf,
+    config: HttpDownloadConfig,
+}
+
+/// State stored when a download is paused, used to re-spawn on resume.
+struct PausedTask {
+    url: String,
+    destination: PathBuf,
+    config: HttpDownloadConfig,
+    snapshots: Vec<ChunkSnapshot>,
+}
+
+// --- public engine handle ------------------------------------------------
 
 pub struct DownloadEngine {
     runtime: Runtime,
@@ -30,12 +62,7 @@ impl DownloadEngine {
 
         runtime.spawn(EngineActor::new(progress_tx).run(cmd_rx));
 
-        Self {
-            runtime,
-            cmd_tx,
-            progress_rx,
-            next_id: 0,
-        }
+        Self { runtime, cmd_tx, progress_rx, next_id: 0 }
     }
 
     pub fn add(&mut self, url: String, destination: PathBuf, config: HttpDownloadConfig) -> DownloadId {
@@ -49,6 +76,10 @@ impl DownloadEngine {
         let _ = self.cmd_tx.send(EngineCommand::Pause { id });
     }
 
+    pub fn resume(&self, id: DownloadId) {
+        let _ = self.cmd_tx.send(EngineCommand::Resume { id });
+    }
+
     pub fn cancel(&self, id: DownloadId) {
         let _ = self.cmd_tx.send(EngineCommand::Cancel { id });
     }
@@ -58,20 +89,20 @@ impl DownloadEngine {
     }
 }
 
+// --- actor ---------------------------------------------------------------
+
 /// Owns all mutable engine state and handles commands on the tokio runtime.
-/// New state (cancellation tokens, queue, speed limits) goes here as fields.
+/// New state (queue, speed limits) goes here as fields.
 /// New protocols get a handle_* method; the dispatch loop never changes shape.
 struct EngineActor {
-    tasks: HashMap<DownloadId, JoinHandle<()>>,
+    tasks: HashMap<DownloadId, TaskEntry>,
+    paused: HashMap<DownloadId, PausedTask>,
     progress_tx: mpsc::UnboundedSender<ProgressUpdate>,
 }
 
 impl EngineActor {
     fn new(progress_tx: mpsc::UnboundedSender<ProgressUpdate>) -> Self {
-        Self {
-            tasks: HashMap::new(),
-            progress_tx,
-        }
+        Self { tasks: HashMap::new(), paused: HashMap::new(), progress_tx }
     }
 
     async fn run(mut self, mut cmd_rx: mpsc::UnboundedReceiver<EngineCommand>) {
@@ -79,15 +110,13 @@ impl EngineActor {
             match cmd {
                 EngineCommand::AddHttp { id, url, destination, config } =>
                     self.handle_add_http(id, url, destination, config),
-                EngineCommand::Pause { id: _ } => {
-                    // TODO: cancellation token
-                }
-                EngineCommand::Resume { id: _ } => {
-                    // TODO: re-spawn with byte offset
-                }
+                EngineCommand::Pause { id } =>
+                    self.handle_pause(id).await,
+                EngineCommand::Resume { id } =>
+                    self.handle_resume(id),
                 EngineCommand::Cancel { id } =>
                     self.handle_cancel(id),
-                EngineCommand::Shutdown =>  {
+                EngineCommand::Shutdown => {
                     self.handle_shutdown();
                     break;
                 }
@@ -95,24 +124,95 @@ impl EngineActor {
         }
     }
 
-    fn handle_add_http(&mut self, id: DownloadId, url: String, destination: PathBuf, config: HttpDownloadConfig) {
-        tracing::info!(id = id.0, %url, "download queued");
+    fn spawn_task(
+        &mut self,
+        id: DownloadId,
+        url: String,
+        destination: PathBuf,
+        config: HttpDownloadConfig,
+        resume_from: Option<Vec<ChunkSnapshot>>,
+    ) {
+        let pause_token = CancellationToken::new();
+        let pause_sink: Arc<Mutex<Option<Vec<ChunkSnapshot>>>> = Arc::new(Mutex::new(None));
         let tx = self.progress_tx.clone();
-        let handle = tokio::spawn(download_task(id, url, destination, config, tx));
-        self.tasks.insert(id, handle);
+
+        let handle = tokio::spawn(download_task(
+            id,
+            url.clone(),
+            destination.clone(),
+            config.clone(),
+            tx,
+            pause_token.clone(),
+            Arc::clone(&pause_sink),
+            resume_from,
+        ));
+
+        self.tasks.insert(id, TaskEntry {
+            handle,
+            pause_token,
+            pause_sink,
+            url,
+            destination,
+            config,
+        });
+    }
+
+    fn handle_add_http(
+        &mut self,
+        id: DownloadId,
+        url: String,
+        destination: PathBuf,
+        config: HttpDownloadConfig,
+    ) {
+        tracing::info!(id = id.0, %url, "download queued");
+        self.spawn_task(id, url, destination, config, None);
+    }
+
+    /// Soft pause: fire the CancellationToken, wait for the task to drain, then
+    /// read the chunk snapshots it left in the pause_sink.
+    async fn handle_pause(&mut self, id: DownloadId) {
+        if let Some(entry) = self.tasks.remove(&id) {
+            tracing::info!(id = id.0, "pausing download");
+            entry.pause_token.cancel();
+            // Task exits quickly: the biased select! in download_chunk fires on the
+            // next loop iteration, flushes its write buffer, and returns.
+            let _ = entry.handle.await;
+            let snapshots = entry.pause_sink.lock().unwrap().take();
+            if let Some(snaps) = snapshots {
+                self.paused.insert(id, PausedTask {
+                    url: entry.url,
+                    destination: entry.destination,
+                    config: entry.config,
+                    snapshots: snaps,
+                });
+            }
+        }
+    }
+
+    fn handle_resume(&mut self, id: DownloadId) {
+        if let Some(pt) = self.paused.remove(&id) {
+            tracing::info!(id = id.0, "resuming download");
+            self.spawn_task(id, pt.url, pt.destination, pt.config, Some(pt.snapshots));
+        }
     }
 
     fn handle_cancel(&mut self, id: DownloadId) {
-        if let Some(handle) = self.tasks.remove(&id) {
+        if let Some(entry) = self.tasks.remove(&id) {
             tracing::info!(id = id.0, "download cancelled");
-            handle.abort();
+            entry.handle.abort();
         }
+        self.paused.remove(&id);
     }
 
     fn handle_shutdown(&mut self) {
-        tracing::info!(count = self.tasks.len(), "engine shutting down, aborting active tasks");
-        for (_, handle) in self.tasks.drain() {
-            handle.abort();
+        tracing::info!(
+            active = self.tasks.len(),
+            paused = self.paused.len(),
+            "engine shutting down, aborting active tasks"
+        );
+        for (_, entry) in self.tasks.drain() {
+            entry.handle.abort();
         }
+        self.paused.clear();
     }
 }

@@ -25,6 +25,15 @@ pub enum EngineCommand {
     Shutdown,
 }
 
+/// Per-chunk resume state. `start` is the stable identity (aria2 / AB DM both key on
+/// the first byte of a chunk). `downloaded` is how many bytes of the chunk are on disk.
+#[derive(Debug, Clone)]
+pub struct ChunkSnapshot {
+    pub start: u64,
+    pub end: u64,
+    pub downloaded: u64,
+}
+
 #[derive(Debug, Clone)]
 pub struct ProgressUpdate {
     pub id: DownloadId,
