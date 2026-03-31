@@ -87,7 +87,7 @@ impl Render for MainWindow {
                     .flex()
                     .items_center()
                     .justify_end()
-                    .px(px(20.0))
+                    .px(px(24.0))
                     .border_b_1()
                     .border_color(Colors::border())
                     .child(icon_sm(IconName::Settings, Colors::muted_foreground())),
