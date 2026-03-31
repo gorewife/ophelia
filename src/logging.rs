@@ -29,6 +29,7 @@ pub fn init() -> WorkerGuard {
     tracing_subscriber::registry()
         .with(filter)
         .with(fmt::layer().with_writer(non_blocking).with_ansi(false))
+        .with(fmt::layer().with_writer(std::io::stderr))
         .init();
 
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "Ophelia starting");
