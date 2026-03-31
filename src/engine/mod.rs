@@ -1,4 +1,5 @@
 mod engine;
+pub mod alloc;
 pub mod chunk;
 pub mod http;
 pub mod types;

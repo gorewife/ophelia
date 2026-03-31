@@ -1,0 +1,92 @@
+//! Single-stream fallback for servers that don't support range requests or
+//! don't send Content-Length.
+//! Just stream to disk
+
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use futures::StreamExt;
+use tokio::sync::mpsc;
+
+use crate::engine::types::{DownloadId, DownloadStatus, ProgressUpdate};
+
+const EMA_ALPHA: f64 = 0.3;
+const WINDOW_SECS: f64 = 2.0;
+
+pub async fn single_download(
+    id: DownloadId,
+    client: Arc<reqwest::Client>,
+    url: String,
+    part_path: PathBuf,
+    destination: PathBuf,
+    stall_timeout_secs: u64,
+    progress_tx: mpsc::UnboundedSender<ProgressUpdate>,
+) {
+    let stall_timeout = Duration::from_secs(stall_timeout_secs);
+
+    let send = |status: DownloadStatus, downloaded: u64, total: Option<u64>, speed: u64| {
+        let _ = progress_tx.send(ProgressUpdate {
+            id,
+            status,
+            downloaded_bytes: downloaded,
+            total_bytes: total,
+            speed_bytes_per_sec: speed,
+        });
+    };
+
+    let response = match client.get(&url).send().await {
+        Ok(r) => r,
+        Err(_) => { send(DownloadStatus::Error, 0, None, 0); return; }
+    };
+
+    let mut file = match tokio::fs::File::create(&part_path).await {
+        Ok(f) => f,
+        Err(_) => { send(DownloadStatus::Error, 0, None, 0); return; }
+    };
+
+    let mut downloaded: u64 = 0;
+    let mut stream = response.bytes_stream();
+    let mut ema_speed: f64 = 0.0;
+    let mut window_start = Instant::now();
+    let mut window_bytes: u64 = 0;
+
+    send(DownloadStatus::Downloading, 0, None, 0);
+
+    loop {
+        let result = tokio::time::timeout(stall_timeout, stream.next()).await;
+        let Ok(maybe) = result else {
+            send(DownloadStatus::Error, downloaded, None, 0);
+            return;
+        };
+        let Some(item) = maybe else { break };
+        let Ok(chunk) = item else {
+            send(DownloadStatus::Error, downloaded, None, 0);
+            return;
+        };
+
+        if tokio::io::AsyncWriteExt::write_all(&mut file, &chunk).await.is_err() {
+            send(DownloadStatus::Error, downloaded, None, 0);
+            return;
+        }
+        downloaded += chunk.len() as u64;
+        window_bytes += chunk.len() as u64;
+        let elapsed = window_start.elapsed().as_secs_f64();
+        if elapsed >= WINDOW_SECS {
+            let recent = window_bytes as f64 / elapsed;
+            ema_speed = (1.0 - EMA_ALPHA) * ema_speed + EMA_ALPHA * recent;
+            window_bytes = 0;
+            window_start = Instant::now();
+        }
+        send(DownloadStatus::Downloading, downloaded, None, ema_speed as u64);
+    }
+
+    drop(file);
+    match std::fs::rename(&part_path, &destination) {
+        Ok(()) => send(DownloadStatus::Finished, downloaded, None, 0),
+        Err(e) => {
+            tracing::error!(err = %e, "rename failed after single download");
+            send(DownloadStatus::Error, downloaded, None, 0);
+        }
+    }
+}

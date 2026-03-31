@@ -4,14 +4,20 @@
 
 #[derive(Debug, Clone)]
 pub struct HttpDownloadConfig {
+    /// Hard ceiling on parallel connections per download. The actual count is
+    /// derived from the sqrt heuristic and clamped to [min_connections, max_connections].
     pub max_connections: usize,
+    /// Floor for the sqrt heuristic. Default 1 (heuristic drives everything).
+    /// Set higher in tests to force parallel chunks on small files without needing
+    /// a large file download.
+    pub min_connections: usize,
     pub write_buffer_size: usize,
     pub progress_interval_ms: u64,
     pub stall_timeout_secs: u64,
     pub max_retries_per_chunk: u32,
-    /// Minimum bytes that must remain in each half of a potential steal.
-    /// A steal requires at least 2× this value remaining in the target chunk.
-    /// Lowered in tests to exercise the code path on small files.
+    /// Minimum bytes required in each half of a potential steal.
+    /// A steal requires >= 2× this value remaining. Lowered in tests to exercise
+    /// the code path on small files.
     pub min_steal_bytes: u64,
 }
 
@@ -19,9 +25,10 @@ impl Default for HttpDownloadConfig {
     fn default() -> Self {
         Self {
             max_connections: 8,
+            min_connections: 1,
             write_buffer_size: 64 * 1024,
             progress_interval_ms: 100,
-            stall_timeout_secs: 30,
+            stall_timeout_secs: 10,
             max_retries_per_chunk: 3,
             min_steal_bytes: 4 * 1024 * 1024,
         }

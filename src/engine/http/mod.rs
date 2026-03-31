@@ -5,5 +5,13 @@
 pub mod config;
 pub mod task;
 
+mod error;
+mod health;
+mod probe;
+mod progress;
+mod single;
+mod steal;
+pub mod worker;
+
 pub use config::HttpDownloadConfig;
 pub use task::download_task;

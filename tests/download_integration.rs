@@ -254,7 +254,10 @@ async fn work_stealing_produces_correct_output() {
     let dest = dir.path().join("file.bin");
 
     let (tx, mut rx) = mpsc::unbounded_channel();
-    let config = HttpDownloadConfig { min_steal_bytes: 4 * 1024, ..HttpDownloadConfig::default() };
+    // min_connections: 4 forces parallel chunks on this small file
+    // sqrt(128KB/1MB) rounds to 1 without the floor,
+    // so stealing would never trigger otherwise.
+    let config = HttpDownloadConfig { min_connections: 4, min_steal_bytes: 4 * 1024, ..HttpDownloadConfig::default() };
     download_task(
         DownloadId(0), url, dest.clone(), config, tx,
         CancellationToken::new(), Arc::new(Mutex::new(None)), None,
