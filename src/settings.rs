@@ -35,6 +35,7 @@ impl Settings {
     }
 
     /// Persist to disk. Creates parent directories if needed.
+    #[allow(dead_code)] // future settings panel
     pub fn save(&self) -> std::io::Result<()> {
         let path = Self::path();
         if let Some(dir) = path.parent() {
