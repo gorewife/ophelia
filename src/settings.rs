@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 pub struct Settings {
     pub max_connections_per_server: usize,
     pub max_connections_per_download: usize,
+    pub max_concurrent_downloads: usize,
     pub default_download_dir: Option<PathBuf>,
 }
 
@@ -20,6 +21,7 @@ impl Default for Settings {
         Self {
             max_connections_per_server: 4,
             max_connections_per_download: 8,
+            max_concurrent_downloads: 3,
             default_download_dir: None,
         }
     }
