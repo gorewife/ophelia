@@ -7,11 +7,13 @@ pub enum IconName {
     ArrowDownToLine,
     CircleCheck,
     CirclePause,
+    CirclePlay,
     Database,
     PanelLeftClose,
     PanelLeftOpen,
     Plus,
-    Settings
+    Settings,
+    Trash2,
 }
 
 impl IconName {
@@ -21,11 +23,13 @@ impl IconName {
             Self::ArrowDownToLine => "arrow-down-to-line",
             Self::CircleCheck => "circle-check",
             Self::CirclePause => "circle-pause",
+            Self::CirclePlay => "circle-play",
             Self::Database => "database",
             Self::Plus => "plus",
             Self::PanelLeftClose => "panel-left-close",
             Self::PanelLeftOpen => "panel-left-open",
-            Self::Settings => "settings"
+            Self::Settings => "settings",
+            Self::Trash2 => "trash",
         };
         SharedString::from(format!("icons/{name}.svg"))
     }
