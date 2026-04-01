@@ -23,6 +23,7 @@ impl Render for Sidebar {
             (IconName::ArrowDownToLine, "Active"),
             (IconName::CircleCheck, "Finished"),
             (IconName::CirclePause, "Paused"),
+            (IconName::Database, "History"),
         ];
 
         let width = if self.collapsed { 56.0 } else { Spacing::SIDEBAR_WIDTH };

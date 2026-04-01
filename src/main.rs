@@ -1,3 +1,5 @@
+rust_i18n::i18n!("locales");
+
 mod app;
 mod assets;
 mod engine;
@@ -9,8 +11,6 @@ mod theme;
 mod ui;
 mod views;
 
-use std::borrow::Cow;
-
 use assets::Assets;
 use gpui::{App, Application, Bounds, WindowBounds, WindowOptions, prelude::*, px, size};
 use views::main_window::MainWindow;
@@ -21,7 +21,7 @@ fn run() {
         .run(|cx: &mut App| {
             cx.text_system()
                 .add_fonts(vec![
-                    Cow::Owned(std::fs::read(
+                    std::borrow::Cow::Owned(std::fs::read(
                         concat!(env!("CARGO_MANIFEST_DIR"), "/assets/fonts/Inter-VariableFont_opsz,wght.ttf")
                     ).unwrap()),
                 ])

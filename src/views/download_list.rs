@@ -79,7 +79,7 @@ impl Render for DownloadList {
                     .text_color(Colors::muted_foreground())
                     .font_weight(gpui::FontWeight::EXTRA_BOLD)
                     .mb(px(14.0))
-                    .child("RECENT"),
+                    .child(rust_i18n::t!("downloads.section_label").to_string()),
             )
             .child(v_flex().gap(px(Spacing::LIST_GAP)).children(rows))
     }

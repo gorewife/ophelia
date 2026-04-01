@@ -30,8 +30,8 @@ impl Render for Notification {
             NotificationKind::Error => (IconName::CircleX, Colors::error()),
         };
         let label = match self.kind {
-            NotificationKind::Success => "Download complete",
-            NotificationKind::Error => "Download failed",
+            NotificationKind::Success => rust_i18n::t!("notifications.complete"),
+            NotificationKind::Error => rust_i18n::t!("notifications.failed"),
         };
 
         h_flex()
@@ -60,7 +60,7 @@ impl Render for Notification {
                         div()
                             .text_xs()
                             .text_color(Colors::muted_foreground())
-                            .child(label),
+                            .child(label.to_string()),
                     ),
             )
     }
