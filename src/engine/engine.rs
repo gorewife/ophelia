@@ -29,7 +29,7 @@ fn host_from_url(url: &str) -> String {
     after_auth.splitn(2, '/').next().unwrap_or(after_auth).to_lowercase()
 }
 
-use crate::engine::http::{download_task, HttpDownloadConfig};
+use crate::engine::http::{download_task, HttpDownloadConfig, TokenBucket};
 use crate::engine::types::*;
 use crate::settings::Settings;
 
@@ -154,6 +154,8 @@ struct EngineActor {
     /// Shared across all downloads targeting the same host.
     server_semaphores: HashMap<String, Arc<Semaphore>>,
     db_tx: std::sync::mpsc::Sender<DbEvent>,
+    /// Global bandwidth cap shared across all active download tasks.
+    global_throttle: Arc<TokenBucket>,
 }
 
 impl EngineActor {
@@ -164,6 +166,7 @@ impl EngineActor {
         done_tx: mpsc::UnboundedSender<DownloadId>,
     ) -> Self {
         let max_concurrent = settings.max_concurrent_downloads;
+        let global_throttle = Arc::new(TokenBucket::new(settings.global_speed_limit_bps));
         Self {
             tasks: HashMap::new(),
             paused: HashMap::new(),
@@ -174,6 +177,7 @@ impl EngineActor {
             settings,
             server_semaphores: HashMap::new(),
             db_tx,
+            global_throttle,
         }
     }
 
@@ -219,7 +223,7 @@ impl EngineActor {
                     self.tasks.remove(&id);
                     // A paused task also fires done_rx (task returned normally after
                     // soft-cancel). In that case the id is already in self.paused and
-                    // the slot isn't freed — don't advance the queue.
+                    // the slot isn't freed so don't advance the queue.
                     if !self.paused.contains_key(&id) {
                         self.try_start_next();
                     }
@@ -248,8 +252,9 @@ impl EngineActor {
             let cfg_ = config.clone();
             let pt_ = pause_token.clone();
             let ps_ = Arc::clone(&pause_sink);
+            let gt_ = Arc::clone(&self.global_throttle);
             async move {
-                download_task(id, url_, dest_, cfg_, tx, pt_, ps_, resume_from, server_semaphore).await;
+                download_task(id, url_, dest_, cfg_, tx, pt_, ps_, resume_from, server_semaphore, gt_).await;
                 let _ = done_tx.send(id);
             }
         });

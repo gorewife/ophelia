@@ -14,6 +14,7 @@ use futures::StreamExt;
 use tokio_util::sync::CancellationToken;
 
 use super::error::{classify_io_error, classify_status, ChunkError};
+use super::throttle::Throttle;
 
 pub async fn download_chunk(
     client: &reqwest::Client,
@@ -28,6 +29,7 @@ pub async fn download_chunk(
     stall_timeout: Duration,
     pause_token: &CancellationToken,
     kill_token: &CancellationToken,
+    throttle: &Throttle,
 ) -> Result<(), ChunkError> {
     let byte_start = chunk_start + resume_from;
     // After a work steal, the victim re-enters with byte_start past its new (shrunk)
@@ -75,7 +77,28 @@ pub async fn download_chunk(
                     Ok(None) => break,
                     Ok(Some(Err(_))) => return Err(ChunkError::Retryable { retry_after: None }),
                     Ok(Some(Ok(bytes))) => {
+                        let wait = throttle.consume(bytes.len() as u64);
                         buffer.extend_from_slice(&bytes);
+                        if !wait.is_zero() {
+                            tokio::select! {
+                                biased;
+                                _ = pause_token.cancelled() => {
+                                    if !buffer.is_empty() {
+                                        write_at(file, &buffer, offset).map_err(classify_io_error)?;
+                                        counters[index].fetch_add(buffer.len() as u64, Ordering::Relaxed);
+                                    }
+                                    return Err(ChunkError::Paused);
+                                }
+                                _ = kill_token.cancelled() => {
+                                    if !buffer.is_empty() {
+                                        write_at(file, &buffer, offset).map_err(classify_io_error)?;
+                                        counters[index].fetch_add(buffer.len() as u64, Ordering::Relaxed);
+                                    }
+                                    return Err(ChunkError::Killed);
+                                }
+                                _ = tokio::time::sleep(wait) => {}
+                            }
+                        }
                         if buffer.len() >= write_buffer_size {
                             write_at(file, &buffer, offset).map_err(classify_io_error)?;
                             offset += buffer.len() as u64;

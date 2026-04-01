@@ -4,6 +4,7 @@
 
 pub mod config;
 pub mod task;
+pub mod throttle;
 
 mod error;
 mod health;
@@ -15,3 +16,4 @@ pub mod worker;
 
 pub use config::HttpDownloadConfig;
 pub use task::download_task;
+pub use throttle::TokenBucket;

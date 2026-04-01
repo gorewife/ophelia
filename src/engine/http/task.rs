@@ -22,6 +22,7 @@ use tokio_util::sync::CancellationToken;
 use crate::engine::alloc::preallocate;
 use crate::engine::chunk;
 use crate::engine::http::HttpDownloadConfig;
+use crate::engine::http::throttle::{Throttle, TokenBucket};
 use crate::engine::types::{ChunkSnapshot, DownloadId, DownloadStatus, ProgressUpdate};
 
 use super::error::{ChunkError, ChunkOutcome};
@@ -51,6 +52,7 @@ async fn resolve_chunks(
     config: &HttpDownloadConfig,
     id: DownloadId,
     progress_tx: &mpsc::UnboundedSender<ProgressUpdate>,
+    throttle: Arc<Throttle>,
 ) -> Option<(u64, chunk::ChunkList, std::fs::File, PathBuf, PathBuf)> {
     let send = |status: DownloadStatus, downloaded: u64, total: Option<u64>| {
         let _ = progress_tx.send(ProgressUpdate {
@@ -113,6 +115,7 @@ async fn resolve_chunks(
                         id, Arc::clone(chunk_client), url.to_owned(),
                         part_path, destination,
                         config.stall_timeout_secs, progress_tx.clone(),
+                        throttle,
                     ).await;
                     return None;
                 }
@@ -267,6 +270,7 @@ async fn chunk_retry_loop(
     activation: Arc<Vec<AtomicU64>>,
     pause_token: CancellationToken,
     server_semaphore: Arc<Semaphore>,
+    throttle: Arc<Throttle>,
     write_buffer_size: usize,
     stall_timeout: Duration,
     max_retries: u32,
@@ -296,6 +300,7 @@ async fn chunk_retry_loop(
             download_chunk(
                 &client, &url, start, end, resume_from, &file, &counters,
                 i, write_buffer_size, stall_timeout, &pause_token, &kill_token,
+                &throttle,
             ).await
         };
 
@@ -356,6 +361,7 @@ pub async fn download_task(
     pause_sink: Arc<Mutex<Option<Vec<ChunkSnapshot>>>>,
     resume_from: Option<Vec<ChunkSnapshot>>,
     server_semaphore: Arc<Semaphore>,
+    global_throttle: Arc<TokenBucket>,
 ) {
     let send = |status: DownloadStatus, downloaded: u64, total: Option<u64>, speed: u64| {
         let _ = progress_tx.send(ProgressUpdate {
@@ -379,14 +385,20 @@ pub async fn download_task(
             .expect("failed to build HTTP/1.1 client"),
     );
 
-    // --- 1. Resolve total size, chunk boundaries, and file handle ---
+    // --- 1. Build the throttle pair for this download ---
+    let throttle = Arc::new(Throttle {
+        per_download: Arc::new(TokenBucket::new(config.speed_limit_bps)),
+        global: Arc::clone(&global_throttle),
+    });
+
+    // --- 2. Resolve total size, chunk boundaries, and file handle ---
     //
     // resolve_chunks constructs part_path internally and may update `destination`
     // if the server sends a Content-Disposition filename. Both resolved paths are
     // returned so the rest of the function uses the correct final name.
     let (total_bytes, chunks, file, part_path, destination) = match resolve_chunks(
         resume_from, &probe_client, &chunk_client, &url,
-        destination, &config, id, &progress_tx,
+        destination, &config, id, &progress_tx, Arc::clone(&throttle),
     ).await {
         Some(v) => v,
         None => return,
@@ -394,7 +406,7 @@ pub async fn download_task(
 
     let file = Arc::new(file);
 
-    // --- 2. Extract config values ---
+    // --- 3. Extract config values ---
     let write_buffer_size = config.write_buffer_size;
     let progress_interval_ms = config.progress_interval_ms;
     let stall_timeout = Duration::from_secs(config.stall_timeout_secs);
@@ -402,10 +414,10 @@ pub async fn download_task(
     let min_steal_bytes = config.min_steal_bytes;
     let num_initial_chunks = chunks.len();
 
-    // --- 3. Per-slot atomic arrays ---
+    // --- 4. Per-slot atomic arrays ---
     let slots = allocate_slot_arrays(&chunks);
 
-    // --- 4. Initial state ---
+    // --- 5. Initial state ---
     let already_done: u64 = slots.downloaded[..num_initial_chunks]
         .iter()
         .map(|a| a.load(Ordering::Relaxed))
@@ -422,7 +434,7 @@ pub async fn download_task(
     let mut current_limit: usize = 1;
     let mut all_ok = true;
 
-    // --- 5. Chunk spawner ---
+    // --- 6. Chunk spawner ---
     //
     // Thin closure that clones all shared state and hands it to chunk_retry_loop.
     // The logic lives in that top-level async fn; this just wires up the Arcs.
@@ -432,7 +444,7 @@ pub async fn download_task(
             Arc::clone(&slots.downloaded), Arc::clone(&slots.starts),
             Arc::clone(&slots.ends), Arc::clone(&slots.kill_tokens),
             Arc::clone(&slots.activation), pause_token.clone(),
-            Arc::clone(&server_semaphore),
+            Arc::clone(&server_semaphore), Arc::clone(&throttle),
             write_buffer_size, stall_timeout, max_retries,
         )
     };
@@ -443,7 +455,7 @@ pub async fn download_task(
         join_set.spawn(make_chunk_fut(i));
     }
 
-    // --- 6. Background tasks ---
+    // --- 7. Background tasks ---
     let progress_handle = spawn_progress_reporter(
         id,
         Arc::clone(&slots.downloaded),
@@ -462,7 +474,7 @@ pub async fn download_task(
         pause_token.clone(),
     );
 
-    // --- 7. Drain loop ---
+    // --- 8. Drain loop ---
     //
     // A 200ms interval drives proactive steal/hedge when workers are imbalanced,
     // stealing only on completion would miss cases where one chunk is much larger
@@ -560,6 +572,6 @@ pub async fn download_task(
     health_handle.abort();
     drop(file); // close before rename on Windows
 
-    // --- 8. Completion ---
+    // --- 9. Completion ---
     finalize_download(paused, all_ok, &slots, &part_path, &destination, total_bytes, &pause_sink, &send);
 }

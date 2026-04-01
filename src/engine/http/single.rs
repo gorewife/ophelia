@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 use futures::StreamExt;
 use tokio::sync::mpsc;
 
+use crate::engine::http::throttle::Throttle;
 use crate::engine::types::{DownloadId, DownloadStatus, ProgressUpdate};
 
 const EMA_ALPHA: f64 = 0.3;
@@ -22,6 +23,7 @@ pub async fn single_download(
     destination: PathBuf,
     stall_timeout_secs: u64,
     progress_tx: mpsc::UnboundedSender<ProgressUpdate>,
+    throttle: Arc<Throttle>,
 ) {
     let stall_timeout = Duration::from_secs(stall_timeout_secs);
 
@@ -68,6 +70,10 @@ pub async fn single_download(
         if tokio::io::AsyncWriteExt::write_all(&mut file, &chunk).await.is_err() {
             send(DownloadStatus::Error, downloaded, None, 0);
             return;
+        }
+        let wait = throttle.consume(chunk.len() as u64);
+        if !wait.is_zero() {
+            tokio::time::sleep(wait).await;
         }
         downloaded += chunk.len() as u64;
         window_bytes += chunk.len() as u64;

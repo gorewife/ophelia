@@ -14,6 +14,8 @@ pub struct Settings {
     pub max_connections_per_download: usize,
     pub max_concurrent_downloads: usize,
     pub default_download_dir: Option<PathBuf>,
+    /// Global bandwidth cap across all concurrent downloads. 0 = unlimited.
+    pub global_speed_limit_bps: u64,
 }
 
 impl Default for Settings {
@@ -23,6 +25,7 @@ impl Default for Settings {
             max_connections_per_download: 8,
             max_concurrent_downloads: 3,
             default_download_dir: None,
+            global_speed_limit_bps: 0,
         }
     }
 }

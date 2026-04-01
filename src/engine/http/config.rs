@@ -19,6 +19,8 @@ pub struct HttpDownloadConfig {
     /// A steal requires >= 2× this value remaining. Lowered in tests to exercise
     /// the code path on small files.
     pub min_steal_bytes: u64,
+    /// Per-download bandwidth cap in bytes/sec. 0 = unlimited.
+    pub speed_limit_bps: u64,
 }
 
 impl Default for HttpDownloadConfig {
@@ -31,6 +33,7 @@ impl Default for HttpDownloadConfig {
             stall_timeout_secs: 10,
             max_retries_per_chunk: 3,
             min_steal_bytes: 4 * 1024 * 1024,
+            speed_limit_bps: 0,
         }
     }
 }
