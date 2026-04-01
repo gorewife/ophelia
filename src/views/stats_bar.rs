@@ -14,19 +14,6 @@ pub struct StatsBar {
     pub queued_count: usize,
 }
 
-impl StatsBar {
-    pub fn new() -> Self {
-        Self {
-            download_samples: Vec::new(),
-            upload_samples: Vec::new(),
-            download_speed: 0.0,
-            upload_speed: 0.0,
-            active_count: 0,
-            finished_count: 0,
-            queued_count: 0,
-        }
-    }
-}
 
 impl RenderOnce for StatsBar {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
@@ -114,8 +101,10 @@ fn network_graph(download: Vec<f32>, upload: Vec<f32>) -> impl IntoElement {
 
             let to_pts = |samples: &[f32]| -> Vec<(f32, f32)> {
                 let n = samples.len();
+                if n == 0 { return Vec::new(); }
+                let denom = (n - 1).max(1) as f32;
                 samples.iter().enumerate().map(|(i, &v)| {
-                    let x = gx + (i as f32 / (n - 1) as f32) * gw;
+                    let x = gx + (i as f32 / denom) * gw;
                     let y = gy + gh - (v / max) * gh * 0.92;
                     (x, y)
                 }).collect()

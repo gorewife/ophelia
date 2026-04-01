@@ -3,6 +3,7 @@ use gpui::{div, prelude::*, px, Context, Entity, Window};
 use crate::app::Downloads;
 use crate::engine::http::HttpDownloadConfig;
 use crate::platform;
+use crate::settings::Settings;
 use crate::theme::Spacing;
 use crate::ui::prelude::*;
 use crate::views::download_list::DownloadList;
@@ -24,8 +25,7 @@ impl MainWindow {
         let sidebar = cx.new(|_| Sidebar {
             active_item: 0,
             collapsed: false,
-            storage_used_bytes: 0,
-            storage_total_bytes: 0,
+            download_dir: Settings::load().download_dir(),
         });
 
         let downloads = cx.new(|cx| Downloads::new(cx));
@@ -71,7 +71,7 @@ impl MainWindow {
 }
 
 impl Render for MainWindow {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
             .flex_col()
@@ -87,10 +87,11 @@ impl Render for MainWindow {
                     .flex()
                     .items_center()
                     .justify_end()
-                    .px(px(24.0))
+                    .pl(px(platform::TRAFFIC_LIGHT_AREA))
+                    .pr(px(24.0))
                     .border_b_1()
                     .border_color(Colors::border())
-                    .child(icon_sm(IconName::Settings, Colors::muted_foreground())),
+                    .child(icon_m(IconName::Settings, Colors::muted_foreground())),
             )
             // Sidebar + content below
             .child(
@@ -111,10 +112,23 @@ impl Render for MainWindow {
                                     .flex_1()
                                     .flex()
                                     .flex_col()
+                                    .gap(px(Spacing::CARD_GAP))
                                     .overflow_y_scroll()
                                     .px(px(Spacing::CONTENT_PADDING_X))
                                     .py(px(Spacing::CONTENT_PADDING_Y))
-                                    .child(StatsBar::new())
+                                    .child({
+                                        let d = self.downloads.read(cx);
+                                        let (active, finished, queued) = d.status_counts();
+                                        StatsBar {
+                                            download_samples: d.speed_samples_mbs(),
+                                            upload_samples: Vec::new(),
+                                            download_speed: d.download_speed_bps() as f32 / 1_000_000.0,
+                                            upload_speed: 0.0,
+                                            active_count: active,
+                                            finished_count: finished,
+                                            queued_count: queued,
+                                        }
+                                    })
                                     .child(self.download_list.clone()),
                             ),
                     ),

@@ -4,6 +4,7 @@
 //! data in SoA layout. A background task drains engine progress updates every 100ms
 //! and calls cx.notify() to trigger a re-render.
 
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -17,6 +18,7 @@ use crate::settings::Settings;
 /// One vec per field, all vecs share the same index space.
 pub struct Downloads {
     engine: DownloadEngine,
+    #[allow(dead_code)] // future settings panel
     pub settings: Settings,
 
     pub ids: Vec<DownloadId>,
@@ -26,6 +28,10 @@ pub struct Downloads {
     pub downloaded_bytes: Vec<u64>,
     pub total_bytes: Vec<Option<u64>>,
     pub speeds: Vec<u64>,
+
+    /// Rolling ~60-second download speed history (one sample per second).
+    pub speed_history: VecDeque<u64>,
+    poll_ticks: u8,
 }
 
 impl Downloads {
@@ -41,6 +47,8 @@ impl Downloads {
             downloaded_bytes: Vec::new(),
             total_bytes: Vec::new(),
             speeds: Vec::new(),
+            speed_history: VecDeque::new(),
+            poll_ticks: 0,
         };
 
         cx.spawn(async |this, cx: &mut gpui::AsyncApp| {
@@ -51,6 +59,7 @@ impl Downloads {
                         while let Some(update) = model.engine.poll_progress() {
                             model.apply_progress(update, cx);
                         }
+                        model.tick_speed();
                     })
                     .ok();
                 })
@@ -105,14 +114,6 @@ impl Downloads {
         }
     }
 
-    pub fn cancel(&mut self, id: DownloadId, cx: &mut Context<Self>) {
-        self.engine.cancel(id);
-        if let Some(idx) = self.ids.iter().position(|&d| d == id) {
-            self.statuses[idx] = DownloadStatus::Error;
-            cx.notify();
-        }
-    }
-
     pub fn remove(&mut self, id: DownloadId, cx: &mut Context<Self>) {
         self.engine.cancel(id);
         if let Some(idx) = self.ids.iter().position(|&d| d == id) {
@@ -125,6 +126,36 @@ impl Downloads {
             self.speeds.remove(idx);
             cx.notify();
         }
+    }
+
+    /// Samples total speed once per second (every 10 × 100 ms polls).
+    fn tick_speed(&mut self) {
+        self.poll_ticks = self.poll_ticks.wrapping_add(1);
+        if self.poll_ticks % 10 == 0 {
+            let total: u64 = self.speeds.iter().sum();
+            if self.speed_history.len() >= 60 {
+                self.speed_history.pop_front();
+            }
+            self.speed_history.push_back(total);
+        }
+    }
+
+    /// Current total download speed across all active tasks, in bytes/s.
+    pub fn download_speed_bps(&self) -> u64 {
+        self.speeds.iter().sum()
+    }
+
+    /// Speed history as MB/s floats, oldest first, ready to hand to StatsBar
+    pub fn speed_samples_mbs(&self) -> Vec<f32> {
+        self.speed_history.iter().map(|&s| s as f32 / 1_000_000.0).collect()
+    }
+
+    /// (active, finished, queued) counts.
+    pub fn status_counts(&self) -> (usize, usize, usize) {
+        let active   = self.statuses.iter().filter(|&&s| s == DownloadStatus::Downloading).count();
+        let finished = self.statuses.iter().filter(|&&s| s == DownloadStatus::Finished).count();
+        let queued   = self.statuses.iter().filter(|&&s| matches!(s, DownloadStatus::Pending | DownloadStatus::Paused)).count();
+        (active, finished, queued)
     }
 
     pub fn len(&self) -> usize {

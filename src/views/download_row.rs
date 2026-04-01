@@ -29,7 +29,7 @@ impl DownloadState {
             Self::Paused   => IconName::CirclePause,
             Self::Queued   => IconName::CirclePause,
             Self::Finished => IconName::CircleCheck,
-            Self::Error    => IconName::CircleCheck,
+            Self::Error    => IconName::CircleX,
         }
     }
 }
@@ -54,37 +54,47 @@ impl RenderOnce for DownloadRow {
         let on_pause_resume = self.on_pause_resume;
         let on_remove = self.on_remove;
 
-        let pause_icon = match state {
-            DownloadState::Active | DownloadState::Queued => Some(IconName::CirclePause),
-            DownloadState::Paused => Some(IconName::CirclePlay),
+        // Pause / resume button - visible for active and paused only.
+        let pause_btn = match state {
+            DownloadState::Active | DownloadState::Queued | DownloadState::Paused => {
+                let icon = match state {
+                    DownloadState::Paused => IconName::CirclePlay,
+                    _ => IconName::CirclePause,
+                };
+                Some(
+                    div()
+                        .id(ElementId::NamedInteger("pr".into(), id.0))
+                        .p(px(4.0))
+                        .rounded(px(6.0))
+                        .hover(|s| s.bg(Colors::muted()))
+                        .on_click(move |_, window, cx| {
+                            if let Some(ref cb) = on_pause_resume {
+                                cb(window, cx);
+                            }
+                        })
+                        .child(icon_sm(icon, Colors::muted_foreground())),
+                )
+            }
             _ => None,
         };
 
-        let pause_btn = pause_icon.map(|icon| {
-            div()
-                .id(ElementId::NamedInteger("pr".into(), id.0))
-                .p(px(4.0))
-                .rounded(px(4.0))
-                .hover(|s| s.bg(Colors::muted()))
-                .on_click(move |_, window, cx| {
-                    if let Some(ref cb) = on_pause_resume {
-                        cb(window, cx);
-                    }
-                })
-                .child(icon_sm(icon, Colors::muted_foreground()))
-        });
+        // Cancel (circle-x) for active, trash for everything else.
+        let remove_icon = match state {
+            DownloadState::Active | DownloadState::Queued => IconName::CircleX,
+            _ => IconName::Trash2,
+        };
 
         let remove_btn = div()
             .id(ElementId::NamedInteger("rm".into(), id.0))
             .p(px(4.0))
-            .rounded(px(4.0))
+            .rounded(px(6.0))
             .hover(|s| s.bg(Colors::muted()))
             .on_click(move |_, window, cx| {
                 if let Some(ref cb) = on_remove {
                     cb(window, cx);
                 }
             })
-            .child(icon_sm(IconName::Trash2, Colors::muted_foreground()));
+            .child(icon_sm(remove_icon, Colors::muted_foreground()));
 
         h_flex()
             .items_center()

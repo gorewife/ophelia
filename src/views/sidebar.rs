@@ -1,4 +1,6 @@
-use gpui::{div, prelude::*, px, EventEmitter, Hsla, SharedString, Window};
+use std::path::{Path, PathBuf};
+
+use gpui::{div, prelude::*, px, relative, EventEmitter, Hsla, SharedString, Window};
 use crate::ui::prelude::*;
 
 pub struct AddDownloadClicked;
@@ -9,8 +11,7 @@ pub struct AddDownloadClicked;
 pub struct Sidebar {
     pub active_item: usize,
     pub collapsed: bool,
-    pub storage_used_bytes: u64,
-    pub storage_total_bytes: u64,
+    pub download_dir: PathBuf,
 }
 
 impl EventEmitter<AddDownloadClicked> for Sidebar {}
@@ -35,7 +36,7 @@ impl Render for Sidebar {
             .border_r_1()
             .border_color(Colors::border())
             .bg(Colors::sidebar())
-            // Logo row - expanded: horizontal with toggle on right
+            // Logo row
             .when(!self.collapsed, |el| el.child(
                 div()
                     .px(px(16.0))
@@ -171,7 +172,7 @@ impl Render for Sidebar {
             .when(!self.collapsed, |el| el.child(
                 div()
                     .p(px(16.0))
-                    .child(storage_card(self.storage_used_bytes, self.storage_total_bytes)),
+                    .child(storage_card(&self.download_dir)),
             ))
     }
 }
@@ -201,24 +202,32 @@ fn nav_item(icon_name: IconName, label: &str, active: bool, collapsed: bool) -> 
         .text_color(text)
         .text_sm()
         .font_weight(gpui::FontWeight::BOLD)
+        .when(active, |el| el.border_l_2().border_color(Colors::ring()))
         .child(icon(icon_name, px(20.0), text))
         .when(!collapsed, |el| el.child(SharedString::from(label.to_string())))
 }
 
-fn format_storage(bytes: u64) -> String {
-    const GB: u64 = 1_000_000_000;
-    const TB: u64 = 1_000_000_000_000;
-    if bytes >= TB {
-        format!("{:.1} TB", bytes as f64 / TB as f64)
-    } else {
-        format!("{} GB", bytes / GB)
-    }
+fn query_disk(path: &Path) -> (u64, u64) {
+    use std::ffi::CString;
+    let Ok(cpath) = CString::new(path.to_string_lossy().as_bytes()) else { return (0, 0) };
+    let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
+    if unsafe { libc::statvfs(cpath.as_ptr(), &mut stat) } != 0 { return (0, 0) }
+    let block  = stat.f_frsize as u64;
+    let total  = block * stat.f_blocks as u64;
+    let avail  = block * stat.f_bavail as u64;
+    (total.saturating_sub(avail), total)
 }
 
-fn storage_card(used: u64, total: u64) -> gpui::Div {
-    let fraction = if total > 0 { used as f32 / total as f32 } else { 0.0 };
-    let available = total.saturating_sub(used);
-    let pct = format!("{}%", (fraction * 100.0) as u32);
+fn format_gb(bytes: u64) -> String {
+    const GB: f64 = 1_000_000_000.0;
+    const TB: f64 = 1_000_000_000_000.0;
+    let b = bytes as f64;
+    if b >= TB { format!("{:.1} TB", b / TB) } else { format!("{:.1} GB", b / GB) }
+}
+
+fn storage_card(path: &Path) -> gpui::Div {
+    let (used, total) = query_disk(path);
+    let fraction = if total > 0 { (used as f32 / total as f32).clamp(0.0, 1.0) } else { 0.0 };
 
     div()
         .flex()
@@ -229,42 +238,55 @@ fn storage_card(used: u64, total: u64) -> gpui::Div {
         .border_1()
         .border_color(Colors::border())
         .bg(Colors::card())
+        // Header
         .child(
             div()
                 .flex()
                 .items_center()
-                .justify_between()
+                .gap(px(6.0))
+                .text_sm()
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .text_color(Colors::finished())
+                .child(icon_sm(IconName::Database, Colors::finished()))
+                .child("Storage"),
+        )
+        // "x.x GB / x.x TB"
+        .child(
+            div()
+                .flex()
+                .items_end()
+                .gap(px(3.0))
                 .child(
                     div()
-                        .flex()
-                        .items_center()
-                        .gap(px(6.0))
-                        .text_sm()
-                        .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(Colors::finished())
-                        .child(icon_sm(IconName::Database, Colors::finished()))
-                        .child("Storage"),
+                        .text_base()
+                        .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                        .text_color(Colors::foreground())
+                        .child(format_gb(used)),
                 )
                 .child(
                     div()
-                        .text_xs()
+                        .text_sm()
+                        .font_weight(gpui::FontWeight::BOLD)
                         .text_color(Colors::muted_foreground())
-                        .child(pct),
+                        .mb(px(1.0))
+                        .child("/"),
+                )
+                .child(
+                    div()
+                        .text_base()
+                        .font_weight(gpui::FontWeight::BOLD)
+                        .text_color(Colors::muted_foreground())
+                        .child(format_gb(total)),
                 ),
         )
-        .child(
-            div()
-                .text_lg()
-                .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .text_color(Colors::muted_foreground())
-                .child(format_storage(available)),
-        )
+        // Label
         .child(
             div()
                 .text_sm()
                 .text_color(Colors::finished())
-                .child("available"),
+                .child("used"),
         )
+        // Progress bar
         .child(
             div()
                 .w_full()
@@ -276,7 +298,7 @@ fn storage_card(used: u64, total: u64) -> gpui::Div {
                         .h_full()
                         .rounded_full()
                         .bg(Colors::finished())
-                        .w(px(Spacing::SIDEBAR_WIDTH * fraction * 0.75)),
+                        .w(relative(fraction)),
                 ),
         )
-    }
+}
