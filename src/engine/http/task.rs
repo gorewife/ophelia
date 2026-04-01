@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Semaphore};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
@@ -36,20 +36,22 @@ use super::worker::download_chunk;
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Builds chunk boundaries + file handle. Two paths: resume from snapshots or
-/// fresh probe + allocate. Returns `None` on unrecoverable error (already reported
-/// via `send`).
+/// Builds chunk boundaries, file handle, and resolved paths.
+///
+/// Takes `destination` by value; may update its filename component if the server
+/// sends a `Content-Disposition` header with a better name. Returns
+/// `(total_bytes, chunks, file, part_path, effective_destination)`, or `None` on
+/// unrecoverable error (already reported via `send`).
 async fn resolve_chunks(
     resume_from: Option<Vec<ChunkSnapshot>>,
     probe_client: &reqwest::Client,
     chunk_client: &Arc<reqwest::Client>,
     url: &str,
-    part_path: &std::path::Path,
-    destination: &std::path::Path,
+    destination: PathBuf,
     config: &HttpDownloadConfig,
     id: DownloadId,
     progress_tx: &mpsc::UnboundedSender<ProgressUpdate>,
-) -> Option<(u64, chunk::ChunkList, std::fs::File)> {
+) -> Option<(u64, chunk::ChunkList, std::fs::File, PathBuf, PathBuf)> {
     let send = |status: DownloadStatus, downloaded: u64, total: Option<u64>| {
         let _ = progress_tx.send(ProgressUpdate {
             id, status, downloaded_bytes: downloaded,
@@ -72,12 +74,13 @@ async fn resolve_chunks(
                     }
                 }).collect(),
             };
-            let file = match std::fs::OpenOptions::new().write(true).open(part_path) {
+            let part_path = part_path_for(&destination);
+            let file = match std::fs::OpenOptions::new().write(true).open(&part_path) {
                 Ok(f) => f,
                 Err(_) => { send(DownloadStatus::Error, 0, Some(total)); return None; }
             };
             tracing::info!(total_bytes = total, chunks = cl.len(), "resuming chunked download");
-            Some((total, cl, file))
+            Some((total, cl, file, part_path, destination))
         }
         None => {
             let probe_result = match probe(probe_client, url).await {
@@ -87,8 +90,20 @@ async fn resolve_chunks(
             tracing::debug!(
                 accepts_ranges = probe_result.accepts_ranges,
                 content_length = probe_result.content_length,
+                filename = probe_result.filename.as_deref(),
                 "probe complete"
             );
+
+            // Prefer the server's Content-Disposition filename over the URL-derived one.
+            let destination = match probe_result.filename {
+                Some(ref name) => {
+                    let mut d = destination;
+                    d.set_file_name(name);
+                    d
+                }
+                None => destination,
+            };
+            let part_path = part_path_for(&destination);
 
             let total_bytes = match probe_result.content_length {
                 Some(len) => len,
@@ -96,7 +111,7 @@ async fn resolve_chunks(
                     tracing::info!("no content-length, falling back to single stream");
                     single_download(
                         id, Arc::clone(chunk_client), url.to_owned(),
-                        part_path.to_owned(), destination.to_owned(),
+                        part_path, destination,
                         config.stall_timeout_secs, progress_tx.clone(),
                     ).await;
                     return None;
@@ -104,7 +119,7 @@ async fn resolve_chunks(
             };
 
             let file = match std::fs::OpenOptions::new()
-                .write(true).create_new(true).open(part_path)
+                .write(true).create_new(true).open(&part_path)
             {
                 Ok(f) => f,
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -130,9 +145,20 @@ async fn resolve_chunks(
 
             tracing::info!(total_bytes, num_chunks, "starting chunked download");
             let chunks = chunk::split(total_bytes, num_chunks);
-            Some((total_bytes, chunks, file))
+            Some((total_bytes, chunks, file, part_path, destination))
         }
     }
+}
+
+/// Derives the `.ophelia_part` staging path from the final destination.
+fn part_path_for(destination: &std::path::Path) -> PathBuf {
+    let mut p = destination.to_path_buf();
+    let name = p
+        .file_name()
+        .map(|n| format!("{}.ophelia_part", n.to_string_lossy()))
+        .unwrap_or_else(|| "download.ophelia_part".into());
+    p.set_file_name(name);
+    p
 }
 
 /// Shared atomic arrays that back every slot (initial + steal/hedge budget).
@@ -240,6 +266,7 @@ async fn chunk_retry_loop(
     kills: Arc<Vec<Mutex<CancellationToken>>>,
     activation: Arc<Vec<AtomicU64>>,
     pause_token: CancellationToken,
+    server_semaphore: Arc<Semaphore>,
     write_buffer_size: usize,
     stall_timeout: Duration,
     max_retries: u32,
@@ -257,10 +284,22 @@ async fn chunk_retry_loop(
         let end = ends[i].load(Ordering::Acquire);
         let resume_from = counters[i].load(Ordering::Relaxed);
 
-        match download_chunk(
-            &client, &url, start, end, resume_from, &file, &counters,
-            i, write_buffer_size, stall_timeout, &pause_token, &kill_token,
-        ).await {
+        // Acquire a per-server connection slot before opening the TCP connection.
+        // Released immediately when download_chunk returns (permit drops at end of block),
+        // so retry sleep never holds a slot.
+        let chunk_result = {
+            let _permit = tokio::select! {
+                biased;
+                _ = pause_token.cancelled() => return (i, ChunkOutcome::Paused),
+                result = server_semaphore.acquire() => result.expect("semaphore not closed"),
+            };
+            download_chunk(
+                &client, &url, start, end, resume_from, &file, &counters,
+                i, write_buffer_size, stall_timeout, &pause_token, &kill_token,
+            ).await
+        };
+
+        match chunk_result {
             Ok(()) => return (i, ChunkOutcome::Finished),
             Err(ChunkError::Paused) => return (i, ChunkOutcome::Paused),
             Err(ChunkError::Killed) => {
@@ -316,6 +355,7 @@ pub async fn download_task(
     pause_token: CancellationToken,
     pause_sink: Arc<Mutex<Option<Vec<ChunkSnapshot>>>>,
     resume_from: Option<Vec<ChunkSnapshot>>,
+    server_semaphore: Arc<Semaphore>,
 ) {
     let send = |status: DownloadStatus, downloaded: u64, total: Option<u64>, speed: u64| {
         let _ = progress_tx.send(ProgressUpdate {
@@ -339,22 +379,14 @@ pub async fn download_task(
             .expect("failed to build HTTP/1.1 client"),
     );
 
-    // .ophelia_part suffix prevents other apps from opening partial files,
-    // on completion we rename to the final destination atomically.
-    let part_path = {
-        let mut p = destination.clone();
-        let name = p
-            .file_name()
-            .map(|n| format!("{}.ophelia_part", n.to_string_lossy()))
-            .unwrap_or_else(|| "download.ophelia_part".into());
-        p.set_file_name(name);
-        p
-    };
-
     // --- 1. Resolve total size, chunk boundaries, and file handle ---
-    let (total_bytes, chunks, file) = match resolve_chunks(
+    //
+    // resolve_chunks constructs part_path internally and may update `destination`
+    // if the server sends a Content-Disposition filename. Both resolved paths are
+    // returned so the rest of the function uses the correct final name.
+    let (total_bytes, chunks, file, part_path, destination) = match resolve_chunks(
         resume_from, &probe_client, &chunk_client, &url,
-        &part_path, &destination, &config, id, &progress_tx,
+        destination, &config, id, &progress_tx,
     ).await {
         Some(v) => v,
         None => return,
@@ -400,6 +432,7 @@ pub async fn download_task(
             Arc::clone(&slots.downloaded), Arc::clone(&slots.starts),
             Arc::clone(&slots.ends), Arc::clone(&slots.kill_tokens),
             Arc::clone(&slots.activation), pause_token.clone(),
+            Arc::clone(&server_semaphore),
             write_buffer_size, stall_timeout, max_retries,
         )
     };

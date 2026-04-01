@@ -15,12 +15,19 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use tokio::runtime::Runtime;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Semaphore};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
+fn host_from_url(url: &str) -> String {
+    let after_scheme = url.splitn(2, "://").nth(1).unwrap_or(url);
+    let after_auth = after_scheme.splitn(2, '@').last().unwrap_or(after_scheme);
+    after_auth.splitn(2, '/').next().unwrap_or(after_auth).to_lowercase()
+}
+
 use crate::engine::http::{download_task, HttpDownloadConfig};
 use crate::engine::types::*;
+use crate::settings::Settings;
 
 // --- per-task bookkeeping ------------------------------------------------
 
@@ -55,12 +62,12 @@ pub struct DownloadEngine {
 }
 
 impl DownloadEngine {
-    pub fn new() -> Self {
+    pub fn new(settings: Settings) -> Self {
         let runtime = Runtime::new().expect("failed to create tokio runtime");
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let (progress_tx, progress_rx) = mpsc::unbounded_channel();
 
-        runtime.spawn(EngineActor::new(progress_tx).run(cmd_rx));
+        runtime.spawn(EngineActor::new(progress_tx, settings).run(cmd_rx));
 
         Self { runtime, cmd_tx, progress_rx, next_id: 0 }
     }
@@ -98,11 +105,30 @@ struct EngineActor {
     tasks: HashMap<DownloadId, TaskEntry>,
     paused: HashMap<DownloadId, PausedTask>,
     progress_tx: mpsc::UnboundedSender<ProgressUpdate>,
+    settings: Settings,
+    /// One semaphore per hostname; permits = settings.max_connections_per_server.
+    /// Shared across all downloads targeting the same host.
+    server_semaphores: HashMap<String, Arc<Semaphore>>,
 }
 
 impl EngineActor {
-    fn new(progress_tx: mpsc::UnboundedSender<ProgressUpdate>) -> Self {
-        Self { tasks: HashMap::new(), paused: HashMap::new(), progress_tx }
+    fn new(progress_tx: mpsc::UnboundedSender<ProgressUpdate>, settings: Settings) -> Self {
+        Self {
+            tasks: HashMap::new(),
+            paused: HashMap::new(),
+            progress_tx,
+            settings,
+            server_semaphores: HashMap::new(),
+        }
+    }
+
+    fn server_semaphore(&mut self, url: &str) -> Arc<Semaphore> {
+        let host = host_from_url(url);
+        let limit = self.settings.max_connections_per_server;
+        self.server_semaphores
+            .entry(host)
+            .or_insert_with(|| Arc::new(Semaphore::new(limit)))
+            .clone()
     }
 
     async fn run(mut self, mut cmd_rx: mpsc::UnboundedReceiver<EngineCommand>) {
@@ -135,6 +161,7 @@ impl EngineActor {
         let pause_token = CancellationToken::new();
         let pause_sink: Arc<Mutex<Option<Vec<ChunkSnapshot>>>> = Arc::new(Mutex::new(None));
         let tx = self.progress_tx.clone();
+        let server_semaphore = self.server_semaphore(&url);
 
         let handle = tokio::spawn(download_task(
             id,
@@ -145,6 +172,7 @@ impl EngineActor {
             pause_token.clone(),
             Arc::clone(&pause_sink),
             resume_from,
+            server_semaphore,
         ));
 
         self.tasks.insert(id, TaskEntry {
