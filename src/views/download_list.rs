@@ -1,4 +1,4 @@
-use gpui::{div, prelude::*, px, Entity, Window};
+use gpui::{div, prelude::*, px, App, Entity, Window};
 
 use crate::app::Downloads;
 use crate::engine::DownloadStatus;
@@ -18,30 +18,61 @@ impl DownloadList {
 
 impl Render for DownloadList {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let entity = self.downloads.clone();
         let d = self.downloads.read(cx);
         let rows: Vec<DownloadRow> = (0..d.len())
             .map(|i| {
+                let id = d.ids[i];
                 let progress = match d.total_bytes[i] {
                     Some(total) if total > 0 => d.downloaded_bytes[i] as f32 / total as f32,
                     _ => 0.0,
                 };
+                let state = match d.statuses[i] {
+                    DownloadStatus::Downloading => DownloadState::Active,
+                    DownloadStatus::Paused => DownloadState::Paused,
+                    DownloadStatus::Finished => DownloadState::Finished,
+                    DownloadStatus::Error => DownloadState::Error,
+                    _ => DownloadState::Queued,
+                };
+
+                let on_pause_resume: Option<Box<dyn Fn(&mut Window, &mut App) + 'static>> =
+                    match state {
+                        DownloadState::Active | DownloadState::Queued => {
+                            let e = entity.clone();
+                            Some(Box::new(move |_w, cx| {
+                                e.update(cx, |dl, cx| dl.pause(id, cx));
+                            }))
+                        }
+                        DownloadState::Paused => {
+                            let e = entity.clone();
+                            Some(Box::new(move |_w, cx| {
+                                e.update(cx, |dl, cx| dl.resume(id, cx));
+                            }))
+                        }
+                        _ => None,
+                    };
+
+                let on_remove: Box<dyn Fn(&mut Window, &mut App) + 'static> = {
+                    let e = entity.clone();
+                    Box::new(move |_w, cx| {
+                        e.update(cx, |dl, cx| dl.remove(id, cx));
+                    })
+                };
+
                 DownloadRow {
+                    id,
                     filename: d.filenames[i].clone(),
-                    url: d.destinations[i].clone(),
+                    destination: d.destinations[i].clone(),
                     progress,
                     speed: format_speed(d.speeds[i]).into(),
-                    state: match d.statuses[i] {
-                        DownloadStatus::Downloading => DownloadState::Active,
-                        DownloadStatus::Finished => DownloadState::Finished,
-                        _ => DownloadState::Queued,
-                    },
+                    state,
+                    on_pause_resume,
+                    on_remove: Some(on_remove),
                 }
             })
             .collect();
 
-        div()
-            .flex()
-            .flex_col()
+        v_flex()
             .child(
                 div()
                     .text_sm()
@@ -50,13 +81,7 @@ impl Render for DownloadList {
                     .mb(px(14.0))
                     .child("RECENT"),
             )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(Spacing::LIST_GAP))
-                    .children(rows),
-            )
+            .child(v_flex().gap(px(Spacing::LIST_GAP)).children(rows))
     }
 }
 
