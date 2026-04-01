@@ -1,17 +1,17 @@
 en:
-  downloads:
-    empty_state: "No downloads yet"
-    speed: "%{speed}"
-    section_label: "RECENT"
-  sidebar:
-    storage: "Storage"
-  notifications:
-    complete: "Download complete"
-    failed: "Download failed"
-  history:
-    title: "History"
-    filter_all: "All"
-    filter_finished: "Finished"
-    filter_failed: "Failed"
-    filter_paused: "Paused"
-    empty: "No downloads in history"
+    downloads:
+        empty_state: "No downloads yet"
+        speed: "%{speed}"
+        section_label: "RECENT"
+    sidebar:
+        storage: "Storage"
+    notifications:
+        complete: "Download complete"
+        failed: "Download failed"
+    history:
+        title: "History"
+        filter_all: "All"
+        filter_finished: "Finished"
+        filter_failed: "Failed"
+        filter_paused: "Paused"
+        empty: "No downloads in history"
