@@ -1,4 +1,8 @@
-//! Text input helper taken from gpui-components.
+//! Text input adapted from the `Input` component in
+//! [longbridge/gpui-component](https://github.com/longbridge/gpui-component),
+//! which is Apache-2.0 licensed. Ophelia keeps a local copy so it can tailor
+//! behavior and styling without taking a direct dependency on that component
+//! library.
 
 use std::ops::Range;
 

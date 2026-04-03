@@ -1,4 +1,7 @@
-use gpui::{Context, IntoElement, OwnedMenu, ParentElement, Render, Window, div, prelude::*, px};
+use gpui::{
+    Context, Corner, FontWeight, IntoElement, MouseButton, MouseMoveEvent, OwnedMenu,
+    ParentElement, Render, Window, anchored, deferred, div, point, prelude::*, px,
+};
 
 use crate::app_menu::{self, OwnedMenuItemLike};
 use crate::ui::prelude::*;
@@ -34,40 +37,58 @@ impl AppMenuBar {
 }
 
 impl Render for AppMenuBar {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         h_flex()
             .id("app-menu-bar")
             .items_center()
             .gap(px(4.0))
-            .on_mouse_down_out(cx.listener(|this, _, _, cx| this.close_menu(cx)))
+            .on_mouse_down(MouseButton::Left, |_, window, cx| {
+                cx.stop_propagation();
+                window.prevent_default();
+            })
             .children(self.menus.iter().enumerate().map(|(index, menu)| {
                 let is_open = self.open_menu == Some(index);
-                div()
-                    .relative()
-                    .child(
-                        div()
-                            .id(("menu-trigger", index))
-                            .px(px(10.0))
-                            .py(px(6.0))
-                            .rounded(px(6.0))
-                            .text_sm()
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(Colors::foreground())
-                            .bg(if is_open {
-                                Colors::muted().into()
-                            } else {
-                                gpui::transparent_black()
-                            })
-                            .hover(|style| style.bg(Colors::muted()))
-                            .cursor_pointer()
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.toggle_menu(index, cx);
-                            }))
-                            .child(app_menu::menu_label(menu)),
+                let button = div()
+                    .id(("menu-trigger", index))
+                    .rounded(px(6.0))
+                    .px(px(10.0))
+                    .py(px(6.0))
+                    .cursor_pointer()
+                    .flex()
+                    .items_center()
+                    .text_sm()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(Colors::foreground())
+                    .hover(|style| style.bg(Colors::muted()))
+                    .when(is_open, |this| this.bg(Colors::muted()))
+                    .child(app_menu::menu_label(menu))
+                    .on_mouse_move(cx.listener(move |this, _: &MouseMoveEvent, _, cx| {
+                        if this.open_menu.is_some() && this.open_menu != Some(index) {
+                            this.open_menu = Some(index);
+                            cx.notify();
+                        }
+                    }))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, _, window, cx| {
+                            cx.stop_propagation();
+                            window.prevent_default();
+                            this.toggle_menu(index, cx);
+                        }),
+                    );
+
+                let popup = if is_open {
+                    Some(
+                        anchored()
+                            .anchor(Corner::TopLeft)
+                            .offset(point(px(0.0), px(10.0)))
+                            .child(deferred(render_menu_popup(index, menu, cx))),
                     )
-                    .when(is_open, |this| {
-                        this.child(render_menu_popup(index, menu, window, cx))
-                    })
+                } else {
+                    None
+                };
+
+                div().relative().h_full().child(button).children(popup)
             }))
     }
 }
@@ -75,15 +96,11 @@ impl Render for AppMenuBar {
 fn render_menu_popup(
     index: usize,
     menu: &OwnedMenu,
-    window: &mut Window,
     cx: &mut Context<AppMenuBar>,
 ) -> impl IntoElement {
-    let _ = window;
     div()
         .id(("menu-popup", index))
-        .absolute()
-        .top(px(34.0))
-        .left_0()
+        .occlude()
         .min_w(px(210.0))
         .p(px(6.0))
         .rounded(px(10.0))
@@ -94,6 +111,13 @@ fn render_menu_popup(
         .flex()
         .flex_col()
         .gap(px(2.0))
+        .on_click(cx.listener(|this, _, _, cx| {
+            this.close_menu(cx);
+        }))
+        .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+            cx.stop_propagation();
+            this.close_menu(cx);
+        }))
         .children(
             app_menu::owned_menu_items(menu)
                 .enumerate()
@@ -128,10 +152,13 @@ fn render_menu_popup(
                             .when(!disabled, |this| {
                                 this.cursor_pointer()
                                     .hover(|style| style.bg(Colors::muted()))
-                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                    .on_click(cx.listener(move |this, _, _, cx| {
                                         this.open_menu = None;
-                                        window.dispatch_action(action.boxed_clone(), cx);
                                         cx.notify();
+                                        let action = action.boxed_clone();
+                                        cx.defer(move |cx| {
+                                            cx.dispatch_action(action.as_ref());
+                                        });
                                     }))
                             })
                             .child(

@@ -1,4 +1,4 @@
-use gpui::{App, AppContext, Bounds, Global, PromptLevel, WindowHandle, px, size};
+use gpui::{App, AppContext, Bounds, Global, WindowHandle, px, size};
 
 use crate::app_menu;
 use crate::platform;
@@ -19,21 +19,8 @@ pub fn init(main_window: WindowHandle<MainWindow>, cx: &mut App) {
         settings_window: None,
     });
 
-    cx.on_action(open_download_modal);
     cx.on_action(open_settings);
     cx.on_action(quit);
-    cx.on_action(about);
-}
-
-fn open_download_modal(_: &app_menu::OpenDownloadModal, cx: &mut App) {
-    let Some(main_window) = main_window(cx) else {
-        return;
-    };
-
-    let _ = main_window.update(cx, |this, window, cx| {
-        window.activate_window();
-        this.open_modal(cx);
-    });
 }
 
 fn open_settings(_: &app_menu::OpenSettings, cx: &mut App) {
@@ -83,35 +70,6 @@ fn open_settings(_: &app_menu::OpenSettings, cx: &mut App) {
 
 fn quit(_: &app_menu::Quit, cx: &mut App) {
     cx.quit();
-}
-
-fn about(_: &app_menu::About, cx: &mut App) {
-    if let Some(active_window) = cx.active_window() {
-        let _ = active_window.update(cx, |_, window, cx| {
-            let _ = window.prompt(
-                PromptLevel::Info,
-                "Ophelia",
-                Some("Feature-rich and extensible download manager"),
-                &["OK"],
-                cx,
-            );
-        });
-        return;
-    }
-
-    let Some(main_window) = main_window(cx) else {
-        return;
-    };
-
-    let _ = main_window.update(cx, |_, window, cx| {
-        let _ = window.prompt(
-            PromptLevel::Info,
-            "Ophelia",
-            Some("Feature-rich and extensible download manager"),
-            &["OK"],
-            cx,
-        );
-    });
 }
 
 fn main_window(cx: &App) -> Option<WindowHandle<MainWindow>> {

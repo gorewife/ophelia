@@ -28,10 +28,14 @@ pub fn build_menus() -> Vec<Menu> {
                     MenuItem::action("Quit", Quit),
                 ],
             },
+            Menu {
+                name: "File".into(),
+                items: vec![MenuItem::action("New Download", OpenDownloadModal)],
+            },
             edit_menu(),
             Menu {
                 name: "Window".into(),
-                items: vec![MenuItem::action("New Download", OpenDownloadModal)],
+                items: vec![],
             },
             Menu {
                 name: "Help".into(),

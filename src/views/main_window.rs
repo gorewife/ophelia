@@ -2,12 +2,12 @@ use gpui::{Context, Entity, Window, div, prelude::*, px};
 
 use crate::app::Downloads;
 use crate::app_menu;
-use crate::engine::http::HttpDownloadConfig;
 use crate::settings::Settings;
 use crate::theme::{APP_FONT_FAMILY, Spacing};
 use crate::ui::prelude::*;
+use crate::views::about_modal::AboutLayer;
 use crate::views::download_list::DownloadList;
-use crate::views::download_modal::{DownloadCancelled, DownloadConfirmed, DownloadModal};
+use crate::views::download_modal::DownloadModalLayer;
 use crate::views::history::HistoryView;
 use crate::views::sidebar::{AddDownloadClicked, Sidebar};
 use crate::views::stats_bar::StatsBar;
@@ -22,7 +22,8 @@ pub struct MainWindow {
     downloads: Entity<Downloads>,
     download_list: Entity<DownloadList>,
     history_view: Entity<HistoryView>,
-    modal: Option<Entity<DownloadModal>>,
+    about_modal: Entity<AboutLayer>,
+    download_modal: Entity<DownloadModalLayer>,
 }
 
 impl MainWindow {
@@ -37,6 +38,8 @@ impl MainWindow {
         let downloads = cx.new(|cx| Downloads::new(cx));
         let download_list = cx.new(|cx| DownloadList::new(downloads.clone(), cx));
         let history_view = cx.new(|cx| HistoryView::new(downloads.clone(), cx));
+        let about_modal = cx.new(|cx| AboutLayer::new(cx));
+        let download_modal = cx.new(|cx| DownloadModalLayer::new(downloads.clone(), cx));
 
         // Re-render when sidebar nav changes (to switch content pane).
         cx.observe(&sidebar, |_, _, cx| cx.notify()).detach();
@@ -45,7 +48,9 @@ impl MainWindow {
         cx.subscribe(
             &sidebar,
             |this: &mut Self, _, _: &AddDownloadClicked, cx| {
-                this.open_modal(cx);
+                this.download_modal.update(cx, |modal, cx| {
+                    modal.show(cx);
+                });
             },
         )
         .detach();
@@ -56,35 +61,9 @@ impl MainWindow {
             downloads,
             download_list,
             history_view,
-            modal: None,
+            about_modal,
+            download_modal,
         }
-    }
-
-    pub(crate) fn open_modal(&mut self, cx: &mut Context<Self>) {
-        let modal = cx.new(|cx| DownloadModal::new(cx));
-
-        cx.subscribe(
-            &modal,
-            |this: &mut Self, _, event: &DownloadConfirmed, cx| {
-                let url = event.url.clone();
-                let destination = event.destination.clone();
-                this.downloads.update(cx, |d, cx| {
-                    d.add(url, destination, HttpDownloadConfig::default(), cx);
-                });
-                this.modal = None;
-                cx.notify();
-            },
-        )
-        .detach();
-
-        cx.subscribe(&modal, |this: &mut Self, _, _: &DownloadCancelled, cx| {
-            this.modal = None;
-            cx.notify();
-        })
-        .detach();
-
-        self.modal = Some(modal);
-        cx.notify();
     }
 
     pub(crate) fn apply_settings(&mut self, settings: Settings, cx: &mut Context<Self>) {
@@ -128,8 +107,8 @@ impl Render for MainWindow {
                         ),
                     ),
             )
-            // Download modal rendered last so it sits on top.
-            .when_some(self.modal.clone(), |el, modal| el.child(modal))
+            .child(self.download_modal.clone())
+            .child(self.about_modal.clone())
     }
 }
 

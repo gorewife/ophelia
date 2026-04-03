@@ -22,6 +22,7 @@ fn run() {
         .with_assets(Assets::new())
         .run(|cx: &mut App| {
             app_menu::init(cx);
+            ui::modal::bind_actions(cx);
             ui::text_field::init(cx);
 
             cx.text_system()
