@@ -12,7 +12,7 @@ mod ui;
 mod views;
 
 use assets::Assets;
-use gpui::{App, Application, Bounds, WindowBounds, WindowOptions, prelude::*, px, size};
+use gpui::{App, Application, Bounds, prelude::*, px, size};
 use views::main_window::MainWindow;
 
 fn run() {
@@ -20,22 +20,19 @@ fn run() {
         .with_assets(Assets::new())
         .run(|cx: &mut App| {
             cx.text_system()
-                .add_fonts(vec![
-                    std::borrow::Cow::Owned(std::fs::read(
-                        concat!(env!("CARGO_MANIFEST_DIR"), "/assets/fonts/Inter-VariableFont_opsz,wght.ttf")
-                    ).unwrap()),
-                ])
+                .add_fonts(vec![std::borrow::Cow::Owned(
+                    std::fs::read(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/assets/fonts/Inter-VariableFont_opsz,wght.ttf"
+                    ))
+                    .unwrap(),
+                )])
                 .unwrap();
 
             let bounds = Bounds::centered(None, size(px(1120.), px(700.)), cx);
-            cx.open_window(
-                WindowOptions {
-                    window_bounds: Some(WindowBounds::Windowed(bounds)),
-                    titlebar: platform::titlebar_options(),
-                    ..Default::default()
-                },
-                |_, cx| cx.new(|cx| MainWindow::new(cx)),
-            )
+            cx.open_window(platform::window_options(bounds), |_, cx| {
+                cx.new(|cx| MainWindow::new(cx))
+            })
             .unwrap();
             cx.activate(true);
         });

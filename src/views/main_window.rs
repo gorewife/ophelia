@@ -1,10 +1,10 @@
-use gpui::{div, prelude::*, px, Bounds, Context, Entity, Window, WindowBounds, WindowHandle, WindowOptions, size};
+use gpui::{Bounds, Context, Entity, Window, WindowHandle, div, prelude::*, px, size};
 
 use crate::app::Downloads;
 use crate::engine::http::HttpDownloadConfig;
 use crate::platform;
 use crate::settings::Settings;
-use crate::theme::Spacing;
+use crate::theme::{APP_FONT_FAMILY, Spacing};
 use crate::ui::prelude::*;
 use crate::views::download_list::DownloadList;
 use crate::views::download_modal::{DownloadCancelled, DownloadConfirmed, DownloadModal};
@@ -42,9 +42,12 @@ impl MainWindow {
         cx.observe(&sidebar, |_, _, cx| cx.notify()).detach();
 
         // Open the modal when the sidebar Add button is clicked.
-        cx.subscribe(&sidebar, |this: &mut Self, _, _: &AddDownloadClicked, cx| {
-            this.open_modal(cx);
-        })
+        cx.subscribe(
+            &sidebar,
+            |this: &mut Self, _, _: &AddDownloadClicked, cx| {
+                this.open_modal(cx);
+            },
+        )
         .detach();
 
         Self {
@@ -60,15 +63,18 @@ impl MainWindow {
     fn open_modal(&mut self, cx: &mut Context<Self>) {
         let modal = cx.new(|cx| DownloadModal::new(cx));
 
-        cx.subscribe(&modal, |this: &mut Self, _, event: &DownloadConfirmed, cx| {
-            let url = event.url.clone();
-            let destination = event.destination.clone();
-            this.downloads.update(cx, |d, cx| {
-                d.add(url, destination, HttpDownloadConfig::default(), cx);
-            });
-            this.modal = None;
-            cx.notify();
-        })
+        cx.subscribe(
+            &modal,
+            |this: &mut Self, _, event: &DownloadConfirmed, cx| {
+                let url = event.url.clone();
+                let destination = event.destination.clone();
+                this.downloads.update(cx, |d, cx| {
+                    d.add(url, destination, HttpDownloadConfig::default(), cx);
+                });
+                this.modal = None;
+                cx.notify();
+            },
+        )
         .detach();
 
         cx.subscribe(&modal, |this: &mut Self, _, _: &DownloadCancelled, cx| {
@@ -90,20 +96,16 @@ impl MainWindow {
         }
 
         let bounds = Bounds::centered(None, size(px(960.), px(600.)), cx);
-        let Ok(window) = cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                titlebar: platform::titlebar_options(),
-                ..Default::default()
-            },
-            |_, cx| cx.new(|cx| SettingsWindow::new(cx)),
-        ) else {
+        let Ok(window) = cx.open_window(platform::window_options(bounds), |_, cx| {
+            cx.new(|cx| SettingsWindow::new(cx))
+        }) else {
             return;
         };
 
         if let Ok(entity) = window.entity(cx) {
             cx.subscribe(&entity, |this: &mut Self, _, event: &SettingsClosed, cx| {
-                this.downloads.update(cx, |d, _| d.settings = event.settings.clone());
+                this.downloads
+                    .update(cx, |d, _| d.settings = event.settings.clone());
                 cx.notify();
             })
             .detach();
@@ -124,34 +126,8 @@ impl Render for MainWindow {
             .size_full()
             .bg(Colors::background())
             .text_color(Colors::foreground())
-            .font_family("Inter")
-            // Full-width titlebar
-            .child(
-                div()
-                    .h(px(platform::TITLEBAR_HEIGHT))
-                    .flex_shrink_0()
-                    .flex()
-                    .items_center()
-                    .justify_end()
-                    .pl(px(platform::TRAFFIC_LIGHT_AREA))
-                    .pr(px(24.0))
-                    .border_b_1()
-                    .border_color(Colors::border())
-                    .child(
-                        div()
-                            .id("settings-btn")
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .w(px(28.0))
-                            .h(px(28.0))
-                            .rounded(px(6.0))
-                            .cursor_pointer()
-                            .on_click(cx.listener(|this, _, _, cx| this.open_settings(cx)))
-                            .child(icon_m(IconName::Settings, Colors::muted_foreground())),
-                    ),
-            )
-            // Sidebar + content below
+            .font_family(APP_FONT_FAMILY)
+            .child(self.render_header(cx))
             .child(
                 div()
                     .flex()
@@ -159,42 +135,62 @@ impl Render for MainWindow {
                     .overflow_hidden()
                     .child(self.sidebar.clone())
                     .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .flex_1()
-                            .overflow_hidden()
-                            .child(
-                                div()
-                                    .id("main-content")
-                                    .flex_1()
-                                    .flex()
-                                    .flex_col()
-                                    .gap(px(Spacing::CARD_GAP))
-                                    .overflow_y_scroll()
-                                    .px(px(Spacing::CONTENT_PADDING_X))
-                                    .py(px(Spacing::CONTENT_PADDING_Y))
-                                    .when(active_nav != HISTORY_NAV_INDEX, |el| {
-                                        let d = self.downloads.read(cx);
-                                        let (active, finished, queued) = d.status_counts();
-                                        el.child(StatsBar {
-                                            download_samples: d.speed_samples_mbs(),
-                                            upload_samples: Vec::new(),
-                                            download_speed: d.download_speed_bps() as f32 / 1_000_000.0,
-                                            upload_speed: 0.0,
-                                            active_count: active,
-                                            finished_count: finished,
-                                            queued_count: queued,
-                                        })
-                                        .child(self.download_list.clone())
-                                    })
-                                    .when(active_nav == HISTORY_NAV_INDEX, |el| {
-                                        el.child(self.history_view.clone())
-                                    }),
-                            ),
+                        div().flex().flex_col().flex_1().overflow_hidden().child(
+                            div()
+                                .id("main-content")
+                                .flex_1()
+                                .flex()
+                                .flex_col()
+                                .gap(px(Spacing::CARD_GAP))
+                                .overflow_y_scroll()
+                                .px(px(Spacing::CONTENT_PADDING_X))
+                                .py(px(Spacing::CONTENT_PADDING_Y))
+                                .child(self.render_content(active_nav, cx)),
+                        ),
                     ),
             )
             // Download modal rendered last so it sits on top.
             .when_some(self.modal.clone(), |el, modal| el.child(modal))
+    }
+}
+
+impl MainWindow {
+    fn render_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        WindowHeader::empty().trailing(
+            div()
+                .id("settings-btn")
+                .flex()
+                .items_center()
+                .justify_center()
+                .w(px(28.0))
+                .h(px(28.0))
+                .rounded(px(6.0))
+                .cursor_pointer()
+                .on_click(cx.listener(|this, _, _, cx| this.open_settings(cx)))
+                .child(icon_m(IconName::Settings, Colors::muted_foreground())),
+        )
+    }
+
+    fn render_content(&self, active_nav: usize, cx: &mut Context<Self>) -> impl IntoElement {
+        if active_nav == HISTORY_NAV_INDEX {
+            return self.history_view.clone().into_any_element();
+        }
+
+        let downloads = self.downloads.read(cx);
+        let (active, finished, queued) = downloads.status_counts();
+
+        v_flex()
+            .gap(px(Spacing::CARD_GAP))
+            .child(StatsBar {
+                download_samples: downloads.speed_samples_mbs(),
+                upload_samples: Vec::new(),
+                download_speed: downloads.download_speed_bps() as f32 / 1_000_000.0,
+                upload_speed: 0.0,
+                active_count: active,
+                finished_count: finished,
+                queued_count: queued,
+            })
+            .child(self.download_list.clone())
+            .into_any_element()
     }
 }

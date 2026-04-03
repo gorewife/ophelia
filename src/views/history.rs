@@ -2,8 +2,10 @@ use gpui::{Context, Entity, IntoElement, Window, div, prelude::*, px, transparen
 
 use crate::app::Downloads;
 use crate::engine::{DownloadStatus, HistoryFilter, HistoryRow};
-use crate::ui::prelude::*;
 use crate::theme::Spacing;
+use crate::ui::prelude::*;
+
+use rust_i18n::t;
 
 pub struct HistoryView {
     downloads: Entity<Downloads>,
@@ -31,33 +33,51 @@ impl Render for HistoryView {
                     .items_center()
                     .gap(px(4.))
                     .mb(px(16.))
-                    .children([
-                        (HistoryFilter::All,      rust_i18n::t!("history.filter_all").to_string()),
-                        (HistoryFilter::Finished, rust_i18n::t!("history.filter_finished").to_string()),
-                        (HistoryFilter::Error,    rust_i18n::t!("history.filter_failed").to_string()),
-                        (HistoryFilter::Paused,   rust_i18n::t!("history.filter_paused").to_string()),
-                    ].into_iter().enumerate().map(|(i, (filter, label))| {
-                        let active = filter == current_filter;
-                        let e = entity.clone();
-                        div()
-                            .id(i)
-                            .px(px(12.))
-                            .py(px(6.))
-                            .rounded(px(6.))
-                            .text_sm()
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .cursor_pointer()
-                            .bg(if active { Colors::muted().into() } else { transparent_black() })
-                            .text_color(if active {
-                                Colors::foreground()
-                            } else {
-                                Colors::muted_foreground()
-                            })
-                            .on_click(move |_, _, cx| {
-                                e.update(cx, |d, cx| d.set_history_filter(filter, cx));
-                            })
-                            .child(label)
-                    })),
+                    .children(
+                        [
+                            (HistoryFilter::All, t!("history.filter_all").to_string()),
+                            (
+                                HistoryFilter::Finished,
+                                t!("history.filter_finished").to_string(),
+                            ),
+                            (
+                                HistoryFilter::Error,
+                                t!("history.filter_failed").to_string(),
+                            ),
+                            (
+                                HistoryFilter::Paused,
+                                t!("history.filter_paused").to_string(),
+                            ),
+                        ]
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, (filter, label))| {
+                            let active = filter == current_filter;
+                            let e = entity.clone();
+                            div()
+                                .id(i)
+                                .px(px(12.))
+                                .py(px(6.))
+                                .rounded(px(6.))
+                                .text_sm()
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .cursor_pointer()
+                                .bg(if active {
+                                    Colors::muted().into()
+                                } else {
+                                    transparent_black()
+                                })
+                                .text_color(if active {
+                                    Colors::foreground()
+                                } else {
+                                    Colors::muted_foreground()
+                                })
+                                .on_click(move |_, _, cx| {
+                                    e.update(cx, |d, cx| d.set_history_filter(filter, cx));
+                                })
+                                .child(label)
+                        }),
+                    ),
             )
             // Rows or empty state
             .child(if rows.is_empty() {
@@ -68,7 +88,7 @@ impl Render for HistoryView {
                     .justify_center()
                     .text_sm()
                     .text_color(Colors::muted_foreground())
-                    .child(rust_i18n::t!("history.empty").to_string())
+                    .child(t!("history.empty").to_string())
                     .into_any_element()
             } else {
                 v_flex()
@@ -81,15 +101,15 @@ impl Render for HistoryView {
 
 fn history_row(row: &HistoryRow) -> gpui::Div {
     let (status_icon, status_color) = match row.status {
-        DownloadStatus::Finished   => (IconName::CircleCheck, Colors::active()),
-        DownloadStatus::Error      => (IconName::CircleX,     Colors::error()),
-        DownloadStatus::Paused     => (IconName::CirclePause, Colors::queued()),
+        DownloadStatus::Finished => (IconName::CircleCheck, Colors::active()),
+        DownloadStatus::Error => (IconName::CircleX, Colors::error()),
+        DownloadStatus::Paused => (IconName::CirclePause, Colors::queued()),
         DownloadStatus::Downloading => (IconName::ArrowDownToLine, Colors::finished()),
-        DownloadStatus::Pending    => (IconName::ArrowDownToLine, Colors::muted_foreground()),
+        DownloadStatus::Pending => (IconName::ArrowDownToLine, Colors::muted_foreground()),
     };
 
     let size_str = format_bytes(row.total_bytes.unwrap_or(row.downloaded_bytes));
-    let age_str  = format_age(row.added_at);
+    let age_str = format_age(row.added_at);
 
     div()
         .flex()
@@ -177,12 +197,24 @@ fn format_age(added_at_ms: i64) -> String {
         "just now".to_string()
     } else if secs < 3600 {
         let m = secs / 60;
-        if m == 1 { "1 minute ago".to_string() } else { format!("{m} minutes ago") }
+        if m == 1 {
+            "1 minute ago".to_string()
+        } else {
+            format!("{m} minutes ago")
+        }
     } else if secs < 86400 {
         let h = secs / 3600;
-        if h == 1 { "1 hour ago".to_string() } else { format!("{h} hours ago") }
+        if h == 1 {
+            "1 hour ago".to_string()
+        } else {
+            format!("{h} hours ago")
+        }
     } else {
         let d = secs / 86400;
-        if d == 1 { "yesterday".to_string() } else { format!("{d} days ago") }
+        if d == 1 {
+            "yesterday".to_string()
+        } else {
+            format!("{d} days ago")
+        }
     }
 }

@@ -1,7 +1,7 @@
-use gpui::{div, prelude::*, px, Context};
+use gpui::{Context, div, prelude::*, px};
 
-use crate::settings::Settings;
 use super::SettingsWindow;
+use crate::settings::Settings;
 
 const SPEED_PRESETS: &[u64] = &[
     0,

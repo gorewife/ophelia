@@ -1,4 +1,4 @@
-use gpui::{div, prelude::*, px, relative, App, ElementId, Hsla, SharedString, Window};
+use gpui::{App, ElementId, Hsla, SharedString, Window, div, prelude::*, px, relative};
 
 use crate::engine::DownloadId;
 use crate::ui::prelude::*;
@@ -15,21 +15,21 @@ pub enum DownloadState {
 impl DownloadState {
     fn color(self) -> Hsla {
         match self {
-            Self::Active   => Colors::active().into(),
-            Self::Paused   => Colors::queued().into(),
-            Self::Queued   => Colors::queued().into(),
+            Self::Active => Colors::active().into(),
+            Self::Paused => Colors::queued().into(),
+            Self::Queued => Colors::queued().into(),
             Self::Finished => Colors::finished().into(),
-            Self::Error    => Colors::error().into(),
+            Self::Error => Colors::error().into(),
         }
     }
 
     fn status_icon(self) -> IconName {
         match self {
-            Self::Active   => IconName::ArrowDownToLine,
-            Self::Paused   => IconName::CirclePause,
-            Self::Queued   => IconName::CirclePause,
+            Self::Active => IconName::ArrowDownToLine,
+            Self::Paused => IconName::CirclePause,
+            Self::Queued => IconName::CirclePause,
             Self::Finished => IconName::CircleCheck,
-            Self::Error    => IconName::CircleX,
+            Self::Error => IconName::CircleX,
         }
     }
 }

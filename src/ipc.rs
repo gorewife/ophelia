@@ -3,7 +3,12 @@
 //! Bound to 127.0.0.1 only
 //! The extension discovers it via GET /health, then POSTs downloads to /download.
 
-use axum::{extract::State, http::StatusCode, routing::{get, post}, Json, Router};
+use axum::{
+    Json, Router,
+    extract::State,
+    http::StatusCode,
+    routing::{get, post},
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::mpsc;

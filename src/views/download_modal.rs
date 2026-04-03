@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 
-use gpui::{div, prelude::*, px, rgba, Context, EventEmitter, SharedString, Window};
+use gpui::{Context, EventEmitter, SharedString, Window, div, prelude::*, px, rgba};
 
 use crate::ui::prelude::*;
 

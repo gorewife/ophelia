@@ -1,13 +1,25 @@
-use gpui::{point, px, Point, Pixels, TitlebarOptions};
+use gpui::{Bounds, Pixels, TitlebarOptions, WindowBounds, WindowOptions, point, px};
 
-pub const TITLEBAR_HEIGHT: f32 = 44.0;
-pub const TRAFFIC_LIGHT_AREA: f32 = 72.0;
-pub const TRAFFIC_LIGHT_OFFSET: Point<Pixels> = point(px(16.0), px(14.0));
+use crate::platform::WindowChrome;
 
-pub fn titlebar_options() -> Option<TitlebarOptions> {
-    Some(TitlebarOptions {
-        appears_transparent: true,
-        traffic_light_position: Some(TRAFFIC_LIGHT_OFFSET),
+const TRAFFIC_LIGHT_PADDING: f32 = 72.0;
+
+pub fn window_chrome() -> WindowChrome {
+    WindowChrome {
+        height: 44.0,
+        leading_padding: TRAFFIC_LIGHT_PADDING,
+        horizontal_padding: 24.0,
+    }
+}
+
+pub fn window_options(bounds: Bounds<Pixels>) -> WindowOptions {
+    WindowOptions {
+        window_bounds: Some(WindowBounds::Windowed(bounds)),
+        titlebar: Some(TitlebarOptions {
+            appears_transparent: true,
+            traffic_light_position: Some(point(px(16.0), px(14.0))),
+            ..Default::default()
+        }),
         ..Default::default()
-    })
+    }
 }

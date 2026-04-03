@@ -19,14 +19,16 @@ use gpui::{Context, SharedString};
 
 use crate::engine::http::HttpDownloadConfig;
 use crate::engine::state::{self, Db, HistoryReader};
-use crate::engine::{DbEvent, DownloadEngine, DownloadId, DownloadStatus, HistoryFilter, HistoryRow, ProgressUpdate, SavedDownload};
+use crate::engine::{
+    DbEvent, DownloadEngine, DownloadId, DownloadStatus, HistoryFilter, HistoryRow, ProgressUpdate,
+    SavedDownload,
+};
 use crate::settings::Settings;
 
 /// All live download state in SoA layout.
 /// One vec per field, all vecs share the same index space.
 pub struct Downloads {
     engine: DownloadEngine,
-    #[allow(dead_code)] // future settings panel
     pub settings: Settings,
     db_tx: std::sync::mpsc::Sender<DbEvent>,
 
@@ -58,7 +60,9 @@ impl Downloads {
         if let Err(e) = db.validate_integrity() {
             tracing::warn!("integrity check: {e}");
         }
-        let (saved, max_id) = db.load_for_restore().expect("failed to load saved downloads");
+        let (saved, max_id) = db
+            .load_for_restore()
+            .expect("failed to load saved downloads");
 
         let (db_tx, db_rx) = std::sync::mpsc::channel::<DbEvent>();
         state::spawn_worker(db, db_rx);
@@ -97,7 +101,9 @@ impl Downloads {
 
         cx.spawn(async |this, cx: &mut gpui::AsyncApp| {
             loop {
-                cx.background_executor().timer(Duration::from_millis(100)).await;
+                cx.background_executor()
+                    .timer(Duration::from_millis(100))
+                    .await;
                 cx.update(|app| {
                     this.update(app, |model, cx| {
                         while let Some(update) = model.engine.poll_progress() {
@@ -105,10 +111,11 @@ impl Downloads {
                         }
                         while let Some(req) = model.engine.poll_ipc() {
                             let dir = model.settings.download_dir();
-                            let name = req.filename
-                                .filter(|n| !n.is_empty())
-                                .unwrap_or_else(|| {
-                                    req.url.rsplit('/').next()
+                            let name =
+                                req.filename.filter(|n| !n.is_empty()).unwrap_or_else(|| {
+                                    req.url
+                                        .rsplit('/')
+                                        .next()
                                         .and_then(|s| s.split('?').next())
                                         .filter(|s| !s.is_empty())
                                         .unwrap_or("download")
@@ -204,14 +211,29 @@ impl Downloads {
 
     /// Speed history as MB/s floats, oldest first, ready to hand to StatsBar
     pub fn speed_samples_mbs(&self) -> Vec<f32> {
-        self.speed_history.iter().map(|&s| s as f32 / 1_000_000.0).collect()
+        self.speed_history
+            .iter()
+            .map(|&s| s as f32 / 1_000_000.0)
+            .collect()
     }
 
     /// (active, finished, queued) counts.
     pub fn status_counts(&self) -> (usize, usize, usize) {
-        let active   = self.statuses.iter().filter(|&&s| s == DownloadStatus::Downloading).count();
-        let finished = self.statuses.iter().filter(|&&s| s == DownloadStatus::Finished).count();
-        let queued   = self.statuses.iter().filter(|&&s| matches!(s, DownloadStatus::Pending | DownloadStatus::Paused)).count();
+        let active = self
+            .statuses
+            .iter()
+            .filter(|&&s| s == DownloadStatus::Downloading)
+            .count();
+        let finished = self
+            .statuses
+            .iter()
+            .filter(|&&s| s == DownloadStatus::Finished)
+            .count();
+        let queued = self
+            .statuses
+            .iter()
+            .filter(|&&s| matches!(s, DownloadStatus::Pending | DownloadStatus::Paused))
+            .count();
         (active, finished, queued)
     }
 
@@ -238,7 +260,8 @@ impl Downloads {
 
     /// Push a restored download into the SoA vecs without going through the engine.
     fn push_saved(&mut self, saved: &SavedDownload) {
-        let filename: SharedString = saved.destination
+        let filename: SharedString = saved
+            .destination
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("unknown")
@@ -264,7 +287,10 @@ impl Downloads {
             self.speeds[idx] = update.speed_bytes_per_sec;
 
             // Emit Finished/Error to DB and show notification on first terminal transition.
-            let is_terminal = matches!(update.status, DownloadStatus::Finished | DownloadStatus::Error);
+            let is_terminal = matches!(
+                update.status,
+                DownloadStatus::Finished | DownloadStatus::Error
+            );
             let was_terminal = matches!(prev, DownloadStatus::Finished | DownloadStatus::Error);
             if is_terminal && !was_terminal {
                 let event = if update.status == DownloadStatus::Finished {

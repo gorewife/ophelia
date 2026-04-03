@@ -1,4 +1,4 @@
-use gpui::{px, svg, Hsla, Pixels, SharedString, Styled, Svg};
+use gpui::{Hsla, Pixels, SharedString, Styled, Svg, px, svg};
 
 /// Icon names mapping to Lucide SVG files in assets/icons/
 #[derive(Debug, Clone, Copy)]

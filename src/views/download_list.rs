@@ -1,9 +1,11 @@
-use gpui::{div, prelude::*, px, App, Entity, Window};
+use gpui::{App, Entity, Window, div, prelude::*, px};
 
 use crate::app::Downloads;
 use crate::engine::DownloadStatus;
 use crate::ui::prelude::*;
 use crate::views::download_row::{DownloadRow, DownloadState};
+
+use rust_i18n::t;
 
 pub struct DownloadList {
     downloads: Entity<Downloads>,
@@ -79,7 +81,7 @@ impl Render for DownloadList {
                     .text_color(Colors::muted_foreground())
                     .font_weight(gpui::FontWeight::EXTRA_BOLD)
                     .mb(px(14.0))
-                    .child(rust_i18n::t!("downloads.section_label").to_string()),
+                    .child(t!("downloads.section_label").to_string()),
             )
             .child(v_flex().gap(px(Spacing::LIST_GAP)).children(rows))
     }

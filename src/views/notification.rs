@@ -1,3 +1,4 @@
+use rust_i18n::t;
 use std::time::Duration;
 
 use gpui::{
@@ -19,7 +20,10 @@ pub struct Notification {
 
 impl Notification {
     pub fn new(filename: impl Into<SharedString>, kind: NotificationKind) -> Self {
-        Self { filename: filename.into(), kind }
+        Self {
+            filename: filename.into(),
+            kind,
+        }
     }
 }
 
@@ -30,8 +34,8 @@ impl Render for Notification {
             NotificationKind::Error => (IconName::CircleX, Colors::error()),
         };
         let label = match self.kind {
-            NotificationKind::Success => rust_i18n::t!("notifications.complete"),
-            NotificationKind::Error => rust_i18n::t!("notifications.failed"),
+            NotificationKind::Success => t!("notifications.complete"),
+            NotificationKind::Error => t!("notifications.failed"),
         };
 
         h_flex()
@@ -66,17 +70,18 @@ impl Render for Notification {
     }
 }
 
-
 pub fn show(cx: &mut App, filename: SharedString, kind: NotificationKind) {
     let options = build_options(cx);
-    let Ok(handle) =
-        cx.open_window(options, |_, cx| cx.new(|_| Notification::new(filename, kind)))
-    else {
+    let Ok(handle) = cx.open_window(options, |_, cx| {
+        cx.new(|_| Notification::new(filename, kind))
+    }) else {
         return;
     };
     cx.spawn(async move |cx| {
         cx.background_executor().timer(Duration::from_secs(4)).await;
-        handle.update(cx, |_, window, _| window.remove_window()).ok();
+        handle
+            .update(cx, |_, window, _| window.remove_window())
+            .ok();
     })
     .detach();
 }
@@ -95,7 +100,13 @@ fn build_options(cx: &App) -> WindowOptions {
         };
         (b, Some(screen.id()))
     } else {
-        (Bounds { origin: point(px(0.), px(0.)), size: size(w, h) }, None)
+        (
+            Bounds {
+                origin: point(px(0.), px(0.)),
+                size: size(w, h),
+            },
+            None,
+        )
     };
 
     WindowOptions {

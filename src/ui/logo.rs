@@ -1,7 +1,7 @@
-use gpui::{
-    canvas, div, point, prelude::*, px, App, FillOptions, FillRule, PathBuilder, PathStyle, Window,
-};
 use crate::theme::Colors;
+use gpui::{
+    App, FillOptions, FillRule, PathBuilder, PathStyle, Window, canvas, div, point, prelude::*, px,
+};
 
 #[derive(IntoElement)]
 pub struct OpheliaLogo {
@@ -39,13 +39,37 @@ impl RenderOnce for OpheliaLogo {
                     builder.translate(point(px(ox), px(oy)));
 
                     builder.move_to(point(px(21.0), px(12.0)));
-                    builder.arc_to(point(px(9.0), px(9.0)), px(0.0), false, false, point(px(3.0), px(12.0)));
-                    builder.arc_to(point(px(9.0), px(9.0)), px(0.0), false, false, point(px(21.0), px(12.0)));
+                    builder.arc_to(
+                        point(px(9.0), px(9.0)),
+                        px(0.0),
+                        false,
+                        false,
+                        point(px(3.0), px(12.0)),
+                    );
+                    builder.arc_to(
+                        point(px(9.0), px(9.0)),
+                        px(0.0),
+                        false,
+                        false,
+                        point(px(21.0), px(12.0)),
+                    );
                     builder.close();
 
                     builder.move_to(point(px(22.5), px(12.0)));
-                    builder.arc_to(point(px(7.5), px(7.5)), px(0.0), false, false, point(px(7.5), px(12.0)));
-                    builder.arc_to(point(px(7.5), px(7.5)), px(0.0), false, false, point(px(22.5), px(12.0)));
+                    builder.arc_to(
+                        point(px(7.5), px(7.5)),
+                        px(0.0),
+                        false,
+                        false,
+                        point(px(7.5), px(12.0)),
+                    );
+                    builder.arc_to(
+                        point(px(7.5), px(7.5)),
+                        px(0.0),
+                        false,
+                        false,
+                        point(px(22.5), px(12.0)),
+                    );
                     builder.close();
 
                     if let Ok(ring) = builder.build() {
@@ -58,8 +82,20 @@ impl RenderOnce for OpheliaLogo {
                     dot_builder.translate(point(px(ox), px(oy)));
 
                     dot_builder.move_to(point(px(16.5), px(12.0)));
-                    dot_builder.arc_to(point(px(1.5), px(1.5)), px(0.0), false, false, point(px(13.5), px(12.0)));
-                    dot_builder.arc_to(point(px(1.5), px(1.5)), px(0.0), false, false, point(px(16.5), px(12.0)));
+                    dot_builder.arc_to(
+                        point(px(1.5), px(1.5)),
+                        px(0.0),
+                        false,
+                        false,
+                        point(px(13.5), px(12.0)),
+                    );
+                    dot_builder.arc_to(
+                        point(px(1.5), px(1.5)),
+                        px(0.0),
+                        false,
+                        false,
+                        point(px(16.5), px(12.0)),
+                    );
                     dot_builder.close();
 
                     if let Ok(dot) = dot_builder.build() {

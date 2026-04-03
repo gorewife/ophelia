@@ -1,5 +1,7 @@
 use gpui::{Rgba, rgb, rgba};
 
+pub const APP_FONT_FAMILY: &str = "Inter";
+
 // ---------------------------------------------------------------------------
 // Color palette
 // ---------------------------------------------------------------------------
@@ -8,27 +10,57 @@ pub struct Colors;
 
 impl Colors {
     // Backgrounds
-    pub fn background() -> Rgba { rgb(0x010202) }
-    pub fn sidebar() -> Rgba    { rgb(0x010202) }
-    pub fn card() -> Rgba       { rgb(0x0f0f0f) }
-    pub fn card_hover() -> Rgba { rgb(0x141414) }
-    pub fn muted() -> Rgba      { rgb(0x1a1a1a) }
+    pub fn background() -> Rgba {
+        rgb(0x010202)
+    }
+    pub fn sidebar() -> Rgba {
+        rgb(0x010202)
+    }
+    pub fn card() -> Rgba {
+        rgb(0x0f0f0f)
+    }
+    pub fn card_hover() -> Rgba {
+        rgb(0x141414)
+    }
+    pub fn muted() -> Rgba {
+        rgb(0x1a1a1a)
+    }
 
     // Text
-    pub fn foreground() -> Rgba       { rgb(0xf5f5f5) }
-    pub fn muted_foreground() -> Rgba { rgb(0x737373) }
+    pub fn foreground() -> Rgba {
+        rgb(0xf5f5f5)
+    }
+    pub fn muted_foreground() -> Rgba {
+        rgb(0x737373)
+    }
 
     // State colors
-    pub fn active() -> Rgba    { rgb(0x7ED37F) }
-    pub fn active_dim() -> Rgba { rgba(0x7ED37F73) }
-    pub fn finished() -> Rgba  { rgb(0x4A90D9) }
-    pub fn queued() -> Rgba    { rgb(0xA78BFA) }
-    pub fn error() -> Rgba     { rgb(0xE5634D) }
+    pub fn active() -> Rgba {
+        rgb(0x7ED37F)
+    }
+    pub fn active_dim() -> Rgba {
+        rgba(0x7ED37F73)
+    }
+    pub fn finished() -> Rgba {
+        rgb(0x4A90D9)
+    }
+    pub fn queued() -> Rgba {
+        rgb(0xA78BFA)
+    }
+    pub fn error() -> Rgba {
+        rgb(0xE5634D)
+    }
 
     // Borders
-    pub fn border() -> Rgba      { rgba(0xffffff12) }
-    pub fn input_border() -> Rgba { rgba(0xffffff1a) }
-    pub fn ring() -> Rgba        { rgba(0x7ED37F66) }
+    pub fn border() -> Rgba {
+        rgba(0xffffff12)
+    }
+    pub fn input_border() -> Rgba {
+        rgba(0xffffff1a)
+    }
+    pub fn ring() -> Rgba {
+        rgba(0x7ED37F66)
+    }
 }
 
 // ---------------------------------------------------------------------------

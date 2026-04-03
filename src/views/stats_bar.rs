@@ -1,7 +1,5 @@
-use gpui::{
-    canvas, div, point, prelude::*, px, rgba, App, Background, Hsla, PathBuilder, Window,
-};
 use crate::ui::prelude::*;
+use gpui::{App, Background, Hsla, PathBuilder, Window, canvas, div, point, prelude::*, px, rgba};
 
 #[derive(IntoElement)]
 pub struct StatsBar {
@@ -13,7 +11,6 @@ pub struct StatsBar {
     pub finished_count: usize,
     pub queued_count: usize,
 }
-
 
 impl RenderOnce for StatsBar {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
@@ -61,11 +58,28 @@ impl RenderOnce for StatsBar {
                     .items_center()
                     .gap(px(16.0))
                     .child(speed_label("↓", &dl_speed, "MB/s", Colors::active().into()))
-                    .child(speed_label("↑", &ul_speed, "MB/s", Colors::finished().into()))
+                    .child(speed_label(
+                        "↑",
+                        &ul_speed,
+                        "MB/s",
+                        Colors::finished().into(),
+                    ))
                     .child(div().w(px(1.0)).h(px(14.0)).bg(Colors::border()))
-                    .child(stat_pill("Active",   &self.active_count.to_string(),   Colors::active().into()))
-                    .child(stat_pill("Finished", &self.finished_count.to_string(), Colors::finished().into()))
-                    .child(stat_pill("Queued",   &self.queued_count.to_string(),   Colors::queued().into())),
+                    .child(stat_pill(
+                        "Active",
+                        &self.active_count.to_string(),
+                        Colors::active().into(),
+                    ))
+                    .child(stat_pill(
+                        "Finished",
+                        &self.finished_count.to_string(),
+                        Colors::finished().into(),
+                    ))
+                    .child(stat_pill(
+                        "Queued",
+                        &self.queued_count.to_string(),
+                        Colors::queued().into(),
+                    )),
             )
     }
 }
@@ -79,13 +93,13 @@ fn network_graph(download: Vec<f32>, upload: Vec<f32>) -> impl IntoElement {
     let dl_fill = Colors::active_dim();
     let ul_line = Colors::finished();
     let ul_fill = rgba(0x4A90D918);
-    let grid    = rgba(0xffffff08);
+    let grid = rgba(0xffffff08);
 
     canvas(
         |_bounds, _window, _cx| (),
         move |bounds, (), window, _cx| {
-            let w  = f32::from(bounds.size.width);
-            let h  = f32::from(bounds.size.height);
+            let w = f32::from(bounds.size.width);
+            let h = f32::from(bounds.size.height);
             let ox = f32::from(bounds.origin.x);
             let oy = f32::from(bounds.origin.y);
 
@@ -101,13 +115,19 @@ fn network_graph(download: Vec<f32>, upload: Vec<f32>) -> impl IntoElement {
 
             let to_pts = |samples: &[f32]| -> Vec<(f32, f32)> {
                 let n = samples.len();
-                if n == 0 { return Vec::new(); }
+                if n == 0 {
+                    return Vec::new();
+                }
                 let denom = (n - 1).max(1) as f32;
-                samples.iter().enumerate().map(|(i, &v)| {
-                    let x = gx + (i as f32 / denom) * gw;
-                    let y = gy + gh - (v / max) * gh * 0.92;
-                    (x, y)
-                }).collect()
+                samples
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &v)| {
+                        let x = gx + (i as f32 / denom) * gw;
+                        let y = gy + gh - (v / max) * gh * 0.92;
+                        (x, y)
+                    })
+                    .collect()
             };
 
             let dl = to_pts(&download);
@@ -147,16 +167,14 @@ fn catmull_rom_cp(pts: &[(f32, f32)], i: usize) -> ((f32, f32), (f32, f32)) {
     let p0 = if i > 0 { pts[i - 1] } else { pts[i] };
     let p1 = pts[i];
     let p2 = pts[i + 1];
-    let p3 = if i + 2 < pts.len() { pts[i + 2] } else { pts[i + 1] };
+    let p3 = if i + 2 < pts.len() {
+        pts[i + 2]
+    } else {
+        pts[i + 1]
+    };
 
-    let cp1 = (
-        p1.0 + (p2.0 - p0.0) / 6.0,
-        p1.1 + (p2.1 - p0.1) / 6.0,
-    );
-    let cp2 = (
-        p2.0 - (p3.0 - p1.0) / 6.0,
-        p2.1 - (p3.1 - p1.1) / 6.0,
-    );
+    let cp1 = (p1.0 + (p2.0 - p0.0) / 6.0, p1.1 + (p2.1 - p0.1) / 6.0);
+    let cp2 = (p2.0 - (p3.0 - p1.0) / 6.0, p2.1 - (p3.1 - p1.1) / 6.0);
     (cp1, cp2)
 }
 
@@ -181,11 +199,17 @@ fn bezier_at(
 
 /// Sample the catmull-rom spline at high resolution for ribbon construction.
 fn sample_spline(pts: &[(f32, f32)], steps_per_seg: usize) -> Vec<(f32, f32)> {
-    if pts.len() < 2 { return pts.to_vec(); }
+    if pts.len() < 2 {
+        return pts.to_vec();
+    }
     let mut out = Vec::with_capacity((pts.len() - 1) * steps_per_seg + 1);
     for i in 0..pts.len() - 1 {
         let (cp1, cp2) = catmull_rom_cp(pts, i);
-        let end = if i == pts.len() - 2 { steps_per_seg + 1 } else { steps_per_seg };
+        let end = if i == pts.len() - 2 {
+            steps_per_seg + 1
+        } else {
+            steps_per_seg
+        };
         for j in 0..end {
             let t = j as f32 / steps_per_seg as f32;
             out.push(bezier_at(pts[i], cp1, cp2, pts[i + 1], t));
@@ -204,7 +228,9 @@ fn smooth_area(
     x1: f32,
     color: impl Into<Background>,
 ) {
-    if pts.len() < 2 { return; }
+    if pts.len() < 2 {
+        return;
+    }
 
     let mut p = PathBuilder::fill();
     // Start at bottom-left, line up to first data point
@@ -224,7 +250,9 @@ fn smooth_area(
     // Close back along the floor
     p.line_to(point(px(x1), px(y_floor)));
     p.close();
-    if let Ok(path) = p.build() { window.paint_path(path, color); }
+    if let Ok(path) = p.build() {
+        window.paint_path(path, color);
+    }
 }
 
 /// Smooth line rendered as a filled ribbon polygon. Samples the spline
@@ -237,7 +265,9 @@ fn smooth_stroke(
     color: impl Into<Background>,
 ) {
     let samples = sample_spline(pts, 8);
-    if samples.len() < 2 { return; }
+    if samples.len() < 2 {
+        return;
+    }
 
     let half = thickness / 2.0;
     let n = samples.len();
@@ -248,13 +278,19 @@ fn smooth_stroke(
         let (dx, dy) = if i == 0 {
             (samples[1].0 - samples[0].0, samples[1].1 - samples[0].1)
         } else if i == n - 1 {
-            (samples[i].0 - samples[i - 1].0, samples[i].1 - samples[i - 1].1)
+            (
+                samples[i].0 - samples[i - 1].0,
+                samples[i].1 - samples[i - 1].1,
+            )
         } else {
-            (samples[i + 1].0 - samples[i - 1].0, samples[i + 1].1 - samples[i - 1].1)
+            (
+                samples[i + 1].0 - samples[i - 1].0,
+                samples[i + 1].1 - samples[i - 1].1,
+            )
         };
         let len = (dx * dx + dy * dy).sqrt().max(0.001);
         let nx = -dy / len * half;
-        let ny =  dx / len * half;
+        let ny = dx / len * half;
 
         top.push((samples[i].0 + nx, samples[i].1 + ny));
         bot.push((samples[i].0 - nx, samples[i].1 - ny));
@@ -269,7 +305,9 @@ fn smooth_stroke(
         p.line_to(point(px(x), px(y)));
     }
     p.close();
-    if let Ok(path) = p.build() { window.paint_path(path, color); }
+    if let Ok(path) = p.build() {
+        window.paint_path(path, color);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -283,16 +321,32 @@ fn hline(window: &mut Window, x0: f32, x1: f32, y: f32, color: impl Into<Backgro
     p.line_to(point(px(x1), px(y + 0.5)));
     p.line_to(point(px(x0), px(y + 0.5)));
     p.close();
-    if let Ok(path) = p.build() { window.paint_path(path, color); }
+    if let Ok(path) = p.build() {
+        window.paint_path(path, color);
+    }
 }
 
 fn dot(window: &mut Window, cx: f32, cy: f32, r: f32, color: impl Into<Background>) {
     let mut p = PathBuilder::fill();
     p.move_to(point(px(cx + r), px(cy)));
-    p.arc_to(point(px(r), px(r)), px(0.0), false, false, point(px(cx - r), px(cy)));
-    p.arc_to(point(px(r), px(r)), px(0.0), false, false, point(px(cx + r), px(cy)));
+    p.arc_to(
+        point(px(r), px(r)),
+        px(0.0),
+        false,
+        false,
+        point(px(cx - r), px(cy)),
+    );
+    p.arc_to(
+        point(px(r), px(r)),
+        px(0.0),
+        false,
+        false,
+        point(px(cx + r), px(cy)),
+    );
     p.close();
-    if let Ok(path) = p.build() { window.paint_path(path, color); }
+    if let Ok(path) = p.build() {
+        window.paint_path(path, color);
+    }
 }
 
 // ---------------------------------------------------------------------------

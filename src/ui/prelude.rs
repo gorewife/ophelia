@@ -1,8 +1,9 @@
-use gpui::{div, Div, Styled};
+use gpui::{Div, Styled, div};
 
+pub use crate::theme::*;
 pub use crate::ui::icon::*;
 pub use crate::ui::logo::*;
-pub use crate::theme::*;
+pub use crate::ui::window_header::*;
 
 pub fn h_flex() -> Div {
     div().flex()
