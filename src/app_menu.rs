@@ -1,7 +1,7 @@
 use gpui::{Action, App, KeyBinding, Menu, MenuItem, OsAction, OwnedMenu, SharedString, actions};
 use rust_i18n::t;
 
-use crate::ui::text_field;
+use crate::ui::controls::text_field;
 
 actions!(ophelia_menu, [OpenDownloadModal, OpenSettings, About, Quit]);
 

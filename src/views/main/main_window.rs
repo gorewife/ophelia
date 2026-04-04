@@ -6,12 +6,13 @@ use crate::app_menu;
 use crate::settings::Settings;
 use crate::theme::{APP_FONT_FAMILY, Spacing};
 use crate::ui::prelude::*;
-use crate::views::about_modal::AboutLayer;
-use crate::views::download_list::DownloadList;
-use crate::views::download_modal::DownloadModalLayer;
-use crate::views::history::HistoryView;
-use crate::views::sidebar::Sidebar;
-use crate::views::stats_bar::StatsBar;
+use crate::views::overlays::about_modal::AboutLayer;
+use crate::views::overlays::download_modal::DownloadModalLayer;
+
+use super::download_list::DownloadList;
+use super::history::HistoryView;
+use super::sidebar::Sidebar;
+use super::stats_bar::StatsBar;
 
 const HISTORY_NAV_INDEX: usize = 4;
 

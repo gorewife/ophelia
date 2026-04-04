@@ -305,11 +305,11 @@ impl Downloads {
 
                 let filename = self.filenames[idx].clone();
                 let kind = if update.status == DownloadStatus::Finished {
-                    crate::views::notification::NotificationKind::Success
+                    crate::views::overlays::notification::NotificationKind::Success
                 } else {
-                    crate::views::notification::NotificationKind::Error
+                    crate::views::overlays::notification::NotificationKind::Error
                 };
-                crate::views::notification::show(cx, filename, kind);
+                crate::views::overlays::notification::show(cx, filename, kind);
                 self.refresh_history(cx);
             }
 

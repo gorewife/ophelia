@@ -3,7 +3,7 @@ use gpui::{App, Entity, Window, div, prelude::*, px};
 use crate::app::Downloads;
 use crate::engine::DownloadStatus;
 use crate::ui::prelude::*;
-use crate::views::download_row::{DownloadRow, DownloadState};
+use crate::views::main::download_row::{DownloadRow, DownloadState};
 
 use rust_i18n::t;
 
