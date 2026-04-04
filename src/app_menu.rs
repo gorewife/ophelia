@@ -1,4 +1,5 @@
 use gpui::{Action, App, KeyBinding, Menu, MenuItem, OsAction, OwnedMenu, SharedString, actions};
+use rust_i18n::t;
 
 use crate::ui::text_field;
 
@@ -19,48 +20,54 @@ pub fn build_menus() -> Vec<Menu> {
     if cfg!(target_os = "macos") {
         vec![
             Menu {
-                name: "Ophelia".into(),
+                name: t!("app.name").to_string().into(),
                 items: vec![
-                    MenuItem::action("About Ophelia", About),
+                    MenuItem::action(t!("menu.about").to_string(), About),
                     MenuItem::separator(),
-                    MenuItem::action("Settings", OpenSettings),
+                    MenuItem::action(t!("menu.settings").to_string(), OpenSettings),
                     MenuItem::separator(),
-                    MenuItem::action("Quit", Quit),
+                    MenuItem::action(t!("menu.quit").to_string(), Quit),
                 ],
             },
             Menu {
-                name: "File".into(),
-                items: vec![MenuItem::action("New Download", OpenDownloadModal)],
+                name: t!("menu.file").to_string().into(),
+                items: vec![MenuItem::action(
+                    t!("menu.new_download").to_string(),
+                    OpenDownloadModal,
+                )],
             },
             edit_menu(),
             Menu {
-                name: "Window".into(),
+                name: t!("menu.window").to_string().into(),
                 items: vec![],
             },
             Menu {
-                name: "Help".into(),
-                items: vec![MenuItem::action("About Ophelia", About)],
+                name: t!("menu.help").to_string().into(),
+                items: vec![MenuItem::action(t!("menu.about").to_string(), About)],
             },
         ]
     } else {
         vec![
             Menu {
-                name: "File".into(),
+                name: t!("menu.file").to_string().into(),
                 items: vec![
-                    MenuItem::action("New Download", OpenDownloadModal),
-                    MenuItem::action("Settings", OpenSettings),
+                    MenuItem::action(t!("menu.new_download").to_string(), OpenDownloadModal),
+                    MenuItem::action(t!("menu.settings").to_string(), OpenSettings),
                     MenuItem::separator(),
-                    MenuItem::action("Quit", Quit),
+                    MenuItem::action(t!("menu.quit").to_string(), Quit),
                 ],
             },
             edit_menu(),
             Menu {
-                name: "Window".into(),
-                items: vec![MenuItem::action("New Download", OpenDownloadModal)],
+                name: t!("menu.window").to_string().into(),
+                items: vec![MenuItem::action(
+                    t!("menu.new_download").to_string(),
+                    OpenDownloadModal,
+                )],
             },
             Menu {
-                name: "Help".into(),
-                items: vec![MenuItem::action("About Ophelia", About)],
+                name: t!("menu.help").to_string().into(),
+                items: vec![MenuItem::action(t!("menu.about").to_string(), About)],
             },
         ]
     }
@@ -104,13 +111,25 @@ pub fn menu_label(menu: &OwnedMenu) -> SharedString {
 
 fn edit_menu() -> Menu {
     Menu {
-        name: "Edit".into(),
+        name: t!("menu.edit").to_string().into(),
         items: vec![
-            MenuItem::os_action("Cut", text_field::Cut, OsAction::Cut),
-            MenuItem::os_action("Copy", text_field::Copy, OsAction::Copy),
-            MenuItem::os_action("Paste", text_field::Paste, OsAction::Paste),
+            MenuItem::os_action(t!("menu.cut").to_string(), text_field::Cut, OsAction::Cut),
+            MenuItem::os_action(
+                t!("menu.copy").to_string(),
+                text_field::Copy,
+                OsAction::Copy,
+            ),
+            MenuItem::os_action(
+                t!("menu.paste").to_string(),
+                text_field::Paste,
+                OsAction::Paste,
+            ),
             MenuItem::separator(),
-            MenuItem::os_action("Select All", text_field::SelectAll, OsAction::SelectAll),
+            MenuItem::os_action(
+                t!("menu.select_all").to_string(),
+                text_field::SelectAll,
+                OsAction::SelectAll,
+            ),
         ],
     }
 }

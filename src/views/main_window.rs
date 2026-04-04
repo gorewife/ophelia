@@ -1,6 +1,7 @@
 use gpui::{Context, Entity, Window, div, prelude::*, px};
 
 use crate::app::Downloads;
+use crate::app_actions;
 use crate::app_menu;
 use crate::settings::Settings;
 use crate::theme::{APP_FONT_FAMILY, Spacing};
@@ -9,7 +10,7 @@ use crate::views::about_modal::AboutLayer;
 use crate::views::download_list::DownloadList;
 use crate::views::download_modal::DownloadModalLayer;
 use crate::views::history::HistoryView;
-use crate::views::sidebar::{AddDownloadClicked, Sidebar};
+use crate::views::sidebar::Sidebar;
 use crate::views::stats_bar::StatsBar;
 
 const HISTORY_NAV_INDEX: usize = 4;
@@ -38,22 +39,17 @@ impl MainWindow {
         let downloads = cx.new(|cx| Downloads::new(cx));
         let download_list = cx.new(|cx| DownloadList::new(downloads.clone(), cx));
         let history_view = cx.new(|cx| HistoryView::new(downloads.clone(), cx));
-        let about_modal = cx.new(|cx| AboutLayer::new(cx));
-        let download_modal = cx.new(|cx| DownloadModalLayer::new(downloads.clone(), cx));
+        let about_visibility = cx.global::<app_actions::AppState>().show_about.clone();
+        let download_modal_visibility = cx
+            .global::<app_actions::AppState>()
+            .show_download_modal
+            .clone();
+        let about_modal = cx.new(|cx| AboutLayer::new(about_visibility, cx));
+        let download_modal =
+            cx.new(|cx| DownloadModalLayer::new(downloads.clone(), download_modal_visibility, cx));
 
         // Re-render when sidebar nav changes (to switch content pane).
         cx.observe(&sidebar, |_, _, cx| cx.notify()).detach();
-
-        // Open the modal when the sidebar Add button is clicked.
-        cx.subscribe(
-            &sidebar,
-            |this: &mut Self, _, _: &AddDownloadClicked, cx| {
-                this.download_modal.update(cx, |modal, cx| {
-                    modal.show(cx);
-                });
-            },
-        )
-        .detach();
 
         Self {
             menu_bar,

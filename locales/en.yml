@@ -1,17 +1,51 @@
-en:
-    downloads:
-        empty_state: "No downloads yet"
-        speed: "%{speed}"
-        section_label: "RECENT"
-    sidebar:
-        storage: "Storage"
-    notifications:
-        complete: "Download complete"
-        failed: "Download failed"
-    history:
-        title: "History"
-        filter_all: "All"
-        filter_finished: "Finished"
-        filter_failed: "Failed"
-        filter_paused: "Paused"
-        empty: "No downloads in history"
+_version: 1
+app:
+    name: "Ophelia"
+    tagline: "Feature-rich and extensible download manager."
+menu:
+    about: "About Ophelia"
+    copy: "Copy"
+    cut: "Cut"
+    edit: "Edit"
+    file: "File"
+    help: "Help"
+    new_download: "New Download"
+    paste: "Paste"
+    quit: "Quit"
+    select_all: "Select All"
+    settings: "Settings"
+    window: "Window"
+about:
+    close: "Close"
+    version: "Version %{version}"
+download_modal:
+    cancel: "Cancel"
+    confirm: "Download"
+    destination_label: "Save to"
+    destination_placeholder: "~/Downloads/file.zip"
+    paste: "Paste"
+    title: "Add Download"
+    url_label: "URL"
+    url_placeholder: "https://example.com/file.zip"
+downloads:
+    empty_state: "No downloads yet"
+    speed: "%{speed}"
+    section_label: "RECENT"
+sidebar:
+    active: "Active"
+    add_download: "Add Download"
+    downloads: "Downloads"
+    finished: "Finished"
+    history: "History"
+    paused: "Paused"
+    storage: "Storage"
+notifications:
+    complete: "Download complete"
+    failed: "Download failed"
+history:
+    title: "History"
+    filter_all: "All"
+    filter_finished: "Finished"
+    filter_failed: "Failed"
+    filter_paused: "Paused"
+    empty: "No downloads in history"

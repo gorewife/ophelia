@@ -1,4 +1,4 @@
-rust_i18n::i18n!("locales");
+rust_i18n::i18n!("locales", fallback = "en");
 
 mod app;
 mod app_actions;
@@ -21,7 +21,10 @@ fn run() {
     Application::new()
         .with_assets(Assets::new())
         .run(|cx: &mut App| {
+            rust_i18n::set_locale("en");
+
             app_menu::init(cx);
+            app_actions::init(cx);
             ui::modal::bind_actions(cx);
             ui::text_field::init(cx);
 
@@ -42,7 +45,7 @@ fn run() {
                 })
                 .unwrap();
 
-            app_actions::init(main_window, cx);
+            app_actions::set_main_window(main_window, cx);
 
             cx.set_menus(app_menu::build_menus());
 
