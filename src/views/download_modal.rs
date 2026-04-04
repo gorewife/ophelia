@@ -2,10 +2,10 @@
 
 use std::path::PathBuf;
 
-use gpui::{App, Context, Entity, EventEmitter, IntoElement, Render, Window, div, prelude::*, px};
+use gpui::{Context, Entity, EventEmitter, IntoElement, Render, Window, div, prelude::*, px};
+use rust_i18n::t;
 
 use crate::app::Downloads;
-use crate::app_menu;
 use crate::ui::prelude::*;
 
 pub struct DownloadConfirmed {
@@ -33,10 +33,20 @@ impl DownloadModal {
             Self::destination_for(&url).to_string_lossy().to_string()
         };
 
-        let url_input =
-            cx.new(|cx| TextField::new(url.clone(), "https://example.com/file.zip", cx));
-        let destination_input =
-            cx.new(|cx| TextField::new(destination, "~/Downloads/file.zip", cx));
+        let url_input = cx.new(|cx| {
+            TextField::new(
+                url.clone(),
+                t!("download_modal.url_placeholder").to_string(),
+                cx,
+            )
+        });
+        let destination_input = cx.new(|cx| {
+            TextField::new(
+                destination,
+                t!("download_modal.destination_placeholder").to_string(),
+                cx,
+            )
+        });
 
         cx.subscribe(
             &url_input,
@@ -165,17 +175,7 @@ pub struct DownloadModalLayer {
 }
 
 impl DownloadModalLayer {
-    pub fn new(downloads: Entity<Downloads>, cx: &mut Context<Self>) -> Self {
-        let show = cx.new(|_| false);
-        let show_clone = show.clone();
-
-        App::on_action(cx, move |_: &app_menu::OpenDownloadModal, cx: &mut App| {
-            show_clone.update(cx, |show, cx| {
-                *show = true;
-                cx.notify();
-            });
-        });
-
+    pub fn new(downloads: Entity<Downloads>, show: Entity<bool>, cx: &mut Context<Self>) -> Self {
         cx.observe(&show, |this, show, cx| {
             if *show.read(cx) {
                 if this.modal.is_none() {
@@ -193,13 +193,6 @@ impl DownloadModalLayer {
             downloads,
             modal: None,
         }
-    }
-
-    pub fn show(&mut self, cx: &mut Context<Self>) {
-        self.show.update(cx, |show, cx| {
-            *show = true;
-            cx.notify();
-        });
     }
 
     fn close(&mut self, cx: &mut Context<Self>) {
@@ -254,119 +247,126 @@ impl Render for DownloadModalLayer {
 impl Render for DownloadModal {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let can_confirm = self.can_confirm(cx);
+        let weak = cx.weak_entity();
 
-        modal().child(
-            div()
-                .w(px(520.0))
-                .p(px(28.0))
-                .flex()
-                .flex_col()
-                .gap(px(20.0))
-                .child(
-                    div()
-                        .text_xl()
-                        .font_weight(gpui::FontWeight::BOLD)
-                        .text_color(Colors::foreground())
-                        .child("Add Download"),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap(px(8.0))
-                        .child(
-                            div()
-                                .text_sm()
-                                .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .text_color(Colors::muted_foreground())
-                                .child("URL"),
-                        )
-                        .child(
-                            div()
-                                .flex()
-                                .gap(px(8.0))
-                                .child(div().flex_1().child(self.url_input.clone()))
-                                .child(
-                                    div()
-                                        .id("paste-btn")
-                                        .flex()
-                                        .items_center()
-                                        .px(px(12.0))
-                                        .py(px(10.0))
-                                        .rounded(px(8.0))
-                                        .border_1()
-                                        .border_color(Colors::border())
-                                        .bg(Colors::background())
-                                        .text_sm()
-                                        .font_weight(gpui::FontWeight::SEMIBOLD)
-                                        .text_color(Colors::foreground())
-                                        .cursor_pointer()
-                                        .on_click(cx.listener(|this, _, _, cx| {
-                                            this.paste_from_clipboard(cx);
-                                        }))
-                                        .child("Paste"),
-                                ),
-                        ),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap(px(8.0))
-                        .child(
-                            div()
-                                .text_sm()
-                                .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .text_color(Colors::muted_foreground())
-                                .child("Save to"),
-                        )
-                        .child(self.destination_input.clone()),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .justify_end()
-                        .gap(px(10.0))
-                        .child(
-                            div()
-                                .id("cancel-btn")
-                                .px(px(18.0))
-                                .py(px(10.0))
-                                .rounded(px(8.0))
-                                .border_1()
-                                .border_color(Colors::border())
-                                .text_sm()
-                                .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .text_color(Colors::foreground())
-                                .cursor_pointer()
-                                .on_click(cx.listener(|_, _, _, cx| {
-                                    cx.emit(DownloadCancelled);
-                                }))
-                                .child("Cancel"),
-                        )
-                        .child(
-                            div()
-                                .id("confirm-btn")
-                                .px(px(18.0))
-                                .py(px(10.0))
-                                .rounded(px(8.0))
-                                .bg(if can_confirm {
-                                    Colors::active()
-                                } else {
-                                    Colors::muted()
-                                })
-                                .text_sm()
-                                .font_weight(gpui::FontWeight::BOLD)
-                                .text_color(Colors::background())
-                                .cursor_pointer()
-                                .when(can_confirm, |el| {
-                                    el.on_click(cx.listener(|this, _, _, cx| {
-                                        this.confirm_if_valid(cx);
+        modal()
+            .on_exit(move |_, cx| {
+                let _ = weak.update(cx, |_, cx| {
+                    cx.emit(DownloadCancelled);
+                });
+            })
+            .child(
+                div()
+                    .w(px(520.0))
+                    .p(px(28.0))
+                    .flex()
+                    .flex_col()
+                    .gap(px(20.0))
+                    .child(
+                        div()
+                            .text_xl()
+                            .font_weight(gpui::FontWeight::BOLD)
+                            .text_color(Colors::foreground())
+                            .child(t!("download_modal.title").to_string()),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap(px(8.0))
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(Colors::muted_foreground())
+                                    .child(t!("download_modal.url_label").to_string()),
+                            )
+                            .child(
+                                div()
+                                    .flex()
+                                    .gap(px(8.0))
+                                    .child(div().flex_1().child(self.url_input.clone()))
+                                    .child(
+                                        div()
+                                            .id("paste-btn")
+                                            .flex()
+                                            .items_center()
+                                            .px(px(12.0))
+                                            .py(px(10.0))
+                                            .rounded(px(8.0))
+                                            .border_1()
+                                            .border_color(Colors::border())
+                                            .bg(Colors::background())
+                                            .text_sm()
+                                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                                            .text_color(Colors::foreground())
+                                            .cursor_pointer()
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                this.paste_from_clipboard(cx);
+                                            }))
+                                            .child(t!("download_modal.paste").to_string()),
+                                    ),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap(px(8.0))
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(Colors::muted_foreground())
+                                    .child(t!("download_modal.destination_label").to_string()),
+                            )
+                            .child(self.destination_input.clone()),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .justify_end()
+                            .gap(px(10.0))
+                            .child(
+                                div()
+                                    .id("cancel-btn")
+                                    .px(px(18.0))
+                                    .py(px(10.0))
+                                    .rounded(px(8.0))
+                                    .border_1()
+                                    .border_color(Colors::border())
+                                    .text_sm()
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(Colors::foreground())
+                                    .cursor_pointer()
+                                    .on_click(cx.listener(|_, _, _, cx| {
+                                        cx.emit(DownloadCancelled);
                                     }))
-                                })
-                                .child("Download"),
-                        ),
-                ),
-        )
+                                    .child(t!("download_modal.cancel").to_string()),
+                            )
+                            .child(
+                                div()
+                                    .id("confirm-btn")
+                                    .px(px(18.0))
+                                    .py(px(10.0))
+                                    .rounded(px(8.0))
+                                    .bg(if can_confirm {
+                                        Colors::active()
+                                    } else {
+                                        Colors::muted()
+                                    })
+                                    .text_sm()
+                                    .font_weight(gpui::FontWeight::BOLD)
+                                    .text_color(Colors::background())
+                                    .cursor_pointer()
+                                    .when(can_confirm, |el| {
+                                        el.on_click(cx.listener(|this, _, _, cx| {
+                                            this.confirm_if_valid(cx);
+                                        }))
+                                    })
+                                    .child(t!("download_modal.confirm").to_string()),
+                            ),
+                    ),
+            )
     }
 }

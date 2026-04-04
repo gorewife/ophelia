@@ -3,8 +3,8 @@ use std::rc::Rc;
 use gpui::{
     App, Context, Entity, FontWeight, IntoElement, Render, RenderOnce, Window, div, prelude::*, px,
 };
+use rust_i18n::t;
 
-use crate::app_menu;
 use crate::ui::prelude::*;
 
 type OnExitHandler = dyn Fn(&mut Window, &mut App);
@@ -14,17 +14,7 @@ pub struct AboutLayer {
 }
 
 impl AboutLayer {
-    pub fn new(cx: &mut Context<Self>) -> Self {
-        let show = cx.new(|_| false);
-        let show_clone = show.clone();
-
-        App::on_action(cx, move |_: &app_menu::About, cx: &mut App| {
-            show_clone.update(cx, |show, cx| {
-                *show = true;
-                cx.notify();
-            });
-        });
-
+    pub fn new(show: Entity<bool>, cx: &mut Context<Self>) -> Self {
         cx.observe(&show, |_, _, cx| {
             cx.notify();
         })
@@ -100,16 +90,19 @@ impl RenderOnce for AboutModal {
                                             .text_xl()
                                             .font_weight(FontWeight::BOLD)
                                             .text_color(Colors::foreground())
-                                            .child("Ophelia"),
+                                            .child(t!("app.name").to_string()),
                                     )
                                     .child(
                                         div()
                                             .text_sm()
                                             .text_color(Colors::muted_foreground())
-                                            .child(format!(
-                                                "Version {}",
-                                                env!("CARGO_PKG_VERSION")
-                                            )),
+                                            .child(
+                                                t!(
+                                                    "about.version",
+                                                    version = env!("CARGO_PKG_VERSION")
+                                                )
+                                                .to_string(),
+                                            ),
                                     ),
                             ),
                     )
@@ -118,7 +111,7 @@ impl RenderOnce for AboutModal {
                             .text_sm()
                             .line_height(px(22.0))
                             .text_color(Colors::muted_foreground())
-                            .child("Feature-rich and extensible download manager."),
+                            .child(t!("app.tagline").to_string()),
                     )
                     .child(
                         h_flex().justify_end().child(
@@ -135,7 +128,7 @@ impl RenderOnce for AboutModal {
                                 .on_click(move |_, window, cx| {
                                     on_exit_button(window, cx);
                                 })
-                                .child("Close"),
+                                .child(t!("about.close").to_string()),
                         ),
                     ),
             )

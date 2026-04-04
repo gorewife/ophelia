@@ -1,9 +1,9 @@
 use std::path::{Path, PathBuf};
 
+use crate::app_menu;
 use crate::ui::prelude::*;
-use gpui::{EventEmitter, Hsla, SharedString, Window, div, prelude::*, px, relative};
-
-pub struct AddDownloadClicked;
+use gpui::{Hsla, SharedString, Window, div, prelude::*, px, relative};
+use rust_i18n::t;
 
 /// Left sidebar
 /// logo, new download button, navigation, storage card
@@ -14,16 +14,14 @@ pub struct Sidebar {
     pub download_dir: PathBuf,
 }
 
-impl EventEmitter<AddDownloadClicked> for Sidebar {}
-
 impl Render for Sidebar {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let nav_items: Vec<(IconName, &str)> = vec![
-            (IconName::Inbox, "Downloads"),
-            (IconName::ArrowDownToLine, "Active"),
-            (IconName::CircleCheck, "Finished"),
-            (IconName::CirclePause, "Paused"),
-            (IconName::Database, "History"),
+        let nav_items: Vec<(IconName, String)> = vec![
+            (IconName::Inbox, t!("sidebar.downloads").to_string()),
+            (IconName::ArrowDownToLine, t!("sidebar.active").to_string()),
+            (IconName::CircleCheck, t!("sidebar.finished").to_string()),
+            (IconName::CirclePause, t!("sidebar.paused").to_string()),
+            (IconName::Database, t!("sidebar.history").to_string()),
         ];
 
         let width = if self.collapsed {
@@ -125,10 +123,10 @@ impl Render for Sidebar {
                             .text_base()
                             .font_weight(gpui::FontWeight::BOLD)
                             .cursor_pointer()
-                            .on_click(cx.listener(|_, _, _, cx| {
-                                cx.emit(AddDownloadClicked);
+                            .on_click(cx.listener(|_, _, window, cx| {
+                                window.dispatch_action(Box::new(app_menu::OpenDownloadModal), cx);
                             }))
-                            .child("+ Add Download"),
+                            .child(t!("sidebar.add_download").to_string()),
                     ),
                 )
             })
@@ -145,8 +143,8 @@ impl Render for Sidebar {
                             .rounded(px(8.0))
                             .bg(Colors::active())
                             .cursor_pointer()
-                            .on_click(cx.listener(|_, _, _, cx| {
-                                cx.emit(AddDownloadClicked);
+                            .on_click(cx.listener(|_, _, window, cx| {
+                                window.dispatch_action(Box::new(app_menu::OpenDownloadModal), cx);
                             }))
                             .child(icon_sm(IconName::Plus, Colors::background())),
                     ),
@@ -168,7 +166,7 @@ impl Render for Sidebar {
                         .enumerate()
                         .map(|(i, (icon_name, label))| {
                             let is_active = i == self.active_item;
-                            nav_item(icon_name, label, is_active, self.collapsed)
+                            nav_item(icon_name, &label, is_active, self.collapsed)
                                 .id(i)
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.active_item = i;
