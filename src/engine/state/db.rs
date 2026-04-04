@@ -1,10 +1,11 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, params};
 
+use crate::engine::state::http;
 use crate::engine::types::{
-    ChunkSnapshot, DbEvent, DownloadId, DownloadStatus, HistoryFilter, HistoryRow, HttpResumeData,
-    PersistedDownloadSource, ProviderResumeData, SavedDownload,
+    DbEvent, DownloadId, DownloadStatus, HistoryFilter, HistoryRow, PersistedDownloadSource,
+    ProviderResumeData, SavedDownload,
 };
 
 #[cfg(test)]
@@ -16,11 +17,15 @@ pub struct Db {
 
 impl Db {
     pub fn open() -> rusqlite::Result<Self> {
-        let path = db_path();
+        Self::open_at(db_path())
+    }
+
+    pub(super) fn open_at(path: impl AsRef<Path>) -> rusqlite::Result<Self> {
+        let path = path.as_ref();
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).ok();
         }
-        let conn = Connection::open(&path)?;
+        let conn = Connection::open(path)?;
         conn.execute_batch(
             "PRAGMA journal_mode=WAL;
              PRAGMA busy_timeout=5000;
@@ -47,17 +52,10 @@ impl Db {
                 etag        TEXT,
                 mime_type   TEXT
             );
-            CREATE TABLE IF NOT EXISTS chunks (
-                download_id INTEGER NOT NULL REFERENCES downloads(id) ON DELETE CASCADE,
-                slot        INTEGER NOT NULL,
-                start       INTEGER NOT NULL,
-                end_byte    INTEGER NOT NULL,
-                downloaded  INTEGER NOT NULL DEFAULT 0,
-                PRIMARY KEY (download_id, slot)
-            );
         ",
         )?;
         self.ensure_downloads_provider_kind_column()?;
+        http::migrate(&self.conn)?;
         Ok(())
     }
 
@@ -190,22 +188,7 @@ impl Db {
         }
 
         for dl in &mut downloads {
-            let mut cstmt = self.conn.prepare(
-                "SELECT start, end_byte, downloaded FROM chunks
-                 WHERE download_id = ?1 ORDER BY slot",
-            )?;
-            let chunks: Vec<ChunkSnapshot> = cstmt
-                .query_map(params![dl.id.0 as i64], |row| {
-                    Ok(ChunkSnapshot {
-                        start: row.get::<_, i64>(0)? as u64,
-                        end: row.get::<_, i64>(1)? as u64,
-                        downloaded: row.get::<_, i64>(2)? as u64,
-                    })
-                })?
-                .filter_map(|r| r.ok())
-                .collect();
-            dl.resume_data =
-                (!chunks.is_empty()).then(|| ProviderResumeData::Http(HttpResumeData::new(chunks)));
+            dl.resume_data = self.load_provider_resume_data(dl.id, &dl.source)?;
         }
 
         Ok((downloads, max_id))
@@ -226,7 +209,7 @@ impl Db {
                     params![
                         id.0 as i64,
                         source.kind(),
-                        source.url(),
+                        source.locator(),
                         destination.to_string_lossy().as_ref(),
                         unix_ms()
                     ],
@@ -258,10 +241,7 @@ impl Db {
                 )?;
                 // Chunks not needed once finished; CASCADE would handle it on delete
                 // but we delete explicitly to free space immediately.
-                self.conn.execute(
-                    "DELETE FROM chunks WHERE download_id = ?1",
-                    params![id.0 as i64],
-                )?;
+                self.save_resume_data(id, None)?;
             }
             DbEvent::Error { id } => {
                 self.conn.execute(
@@ -283,26 +263,17 @@ impl Db {
         id: DownloadId,
         resume_data: Option<&ProviderResumeData>,
     ) -> rusqlite::Result<()> {
-        self.conn.execute(
-            "DELETE FROM chunks WHERE download_id = ?1",
-            params![id.0 as i64],
-        )?;
-        if let Some(ProviderResumeData::Http(data)) = resume_data {
-            let mut stmt = self.conn.prepare(
-                "INSERT INTO chunks (download_id, slot, start, end_byte, downloaded)
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
-            )?;
-            for (slot, chunk) in data.chunks.iter().enumerate() {
-                stmt.execute(params![
-                    id.0 as i64,
-                    slot as i64,
-                    chunk.start as i64,
-                    chunk.end as i64,
-                    chunk.downloaded as i64,
-                ])?;
-            }
+        http::save_resume_data(&self.conn, id, resume_data)
+    }
+
+    fn load_provider_resume_data(
+        &self,
+        download_id: DownloadId,
+        source: &PersistedDownloadSource,
+    ) -> rusqlite::Result<Option<ProviderResumeData>> {
+        match source {
+            PersistedDownloadSource::Http { .. } => http::load_resume_data(&self.conn, download_id),
         }
-        Ok(())
     }
 }
 
@@ -326,7 +297,11 @@ pub struct HistoryReader {
 
 impl HistoryReader {
     pub fn open() -> rusqlite::Result<Self> {
-        let conn = Connection::open(db_path())?;
+        Self::open_at(db_path())
+    }
+
+    pub(super) fn open_at(path: impl AsRef<Path>) -> rusqlite::Result<Self> {
+        let conn = Connection::open(path.as_ref())?;
         // Best-effort read-only hint; doesn't error on older SQLite.
         let _ = conn.execute_batch("PRAGMA query_only=ON;");
         Ok(Self { conn })
@@ -340,31 +315,43 @@ impl HistoryReader {
             HistoryFilter::Paused => "AND status = 'paused'",
         };
         let sql = format!(
-            "SELECT id, url, destination, status, total_bytes, downloaded, added_at, finished_at
+            "SELECT id, provider_kind, url, destination, status, total_bytes, downloaded, added_at, finished_at
              FROM downloads
              WHERE 1=1 {status_clause}
-               AND (?1 = '' OR destination LIKE '%' || ?1 || '%' OR url LIKE '%' || ?1 || '%')
+               AND (?1 = ''
+                    OR destination LIKE '%' || ?1 || '%'
+                    OR url LIKE '%' || ?1 || '%'
+                    OR provider_kind LIKE '%' || ?1 || '%')
              ORDER BY added_at DESC LIMIT 500"
         );
         let mut stmt = self.conn.prepare(&sql)?;
         let rows = stmt
             .query_map(params![search], |row| {
-                let status_str: String = row.get(3)?;
+                let provider_kind: String = row.get(1)?;
+                let locator: String = row.get(2)?;
+                let status_str: String = row.get(4)?;
                 Ok(HistoryRow {
                     id: DownloadId(row.get::<_, i64>(0)? as u64),
-                    url: row.get(1)?,
-                    destination: row.get(2)?,
+                    provider_kind: provider_kind.clone(),
+                    source_label: history_source_label(&provider_kind, locator),
+                    destination: row.get(3)?,
                     status: status_from_str(&status_str),
-                    total_bytes: row.get::<_, Option<i64>>(4)?.map(|b| b as u64),
-                    downloaded_bytes: row.get::<_, i64>(5)? as u64,
-                    added_at: row.get(6)?,
-                    finished_at: row.get(7)?,
+                    total_bytes: row.get::<_, Option<i64>>(5)?.map(|b| b as u64),
+                    downloaded_bytes: row.get::<_, i64>(6)? as u64,
+                    added_at: row.get(7)?,
+                    finished_at: row.get(8)?,
                 })
             })?
             .filter_map(|r| r.ok())
             .collect();
         Ok(rows)
     }
+}
+
+fn history_source_label(provider_kind: &str, locator: String) -> String {
+    PersistedDownloadSource::from_parts(provider_kind, locator.clone())
+        .map(|source| source.display_label().to_string())
+        .unwrap_or(locator)
 }
 
 fn status_from_str(s: &str) -> DownloadStatus {
@@ -387,6 +374,14 @@ fn unix_ms() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::types::{ChunkSnapshot, HttpResumeData};
+    use tempfile::TempDir;
+
+    fn temp_db_path() -> (TempDir, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("downloads.db");
+        (dir, path)
+    }
 
     #[test]
     fn migrate_adds_provider_kind_to_legacy_downloads_table() {
@@ -435,8 +430,8 @@ mod tests {
 
     #[test]
     fn load_for_restore_reads_provider_kind_and_http_resume_data() {
-        let conn = Connection::open_in_memory().unwrap();
-        let db = Db { conn };
+        let (_dir, db_path) = temp_db_path();
+        let db = Db::open_at(&db_path).unwrap();
         db.migrate().unwrap();
 
         db.conn
@@ -470,7 +465,7 @@ mod tests {
         let saved = &downloads[0];
         assert_eq!(saved.id, DownloadId(7));
         assert_eq!(saved.source.kind(), HTTP_PROVIDER_KIND);
-        assert_eq!(saved.url(), "https://example.com/file.bin");
+        assert_eq!(saved.source.locator(), "https://example.com/file.bin");
         assert_eq!(saved.downloaded_bytes, 25);
         assert_eq!(saved.total_bytes, Some(100));
 
@@ -479,5 +474,98 @@ mod tests {
         assert_eq!(resume.chunks[0].start, 0);
         assert_eq!(resume.chunks[0].end, 100);
         assert_eq!(resume.chunks[0].downloaded, 25);
+    }
+
+    #[test]
+    fn load_for_restore_skips_unknown_provider_kind() {
+        let (_dir, db_path) = temp_db_path();
+        let db = Db::open_at(&db_path).unwrap();
+
+        db.conn
+            .execute(
+                "INSERT INTO downloads
+                 (id, provider_kind, url, destination, status, downloaded, added_at)
+                 VALUES (?1, ?2, ?3, ?4, 'paused', ?5, ?6)",
+                params![1_i64, "unknown", "opaque:thing", "/tmp/thing", 0_i64, 1_i64],
+            )
+            .unwrap();
+
+        let (downloads, max_id) = db.load_for_restore().unwrap();
+        assert_eq!(max_id, 1);
+        assert!(downloads.is_empty());
+    }
+
+    #[test]
+    fn history_reader_filters_and_searches_transfer_rows() {
+        let (_dir, db_path) = temp_db_path();
+        let db = Db::open_at(&db_path).unwrap();
+
+        db.handle(DbEvent::Started {
+            id: DownloadId(1),
+            source: PersistedDownloadSource::Http {
+                url: "https://example.com/success.zip".to_string(),
+            },
+            destination: PathBuf::from("/tmp/success.zip"),
+        })
+        .unwrap();
+        db.handle(DbEvent::Finished {
+            id: DownloadId(1),
+            total_bytes: 100,
+        })
+        .unwrap();
+
+        db.handle(DbEvent::Started {
+            id: DownloadId(2),
+            source: PersistedDownloadSource::Http {
+                url: "https://example.com/failure.zip".to_string(),
+            },
+            destination: PathBuf::from("/tmp/failure.zip"),
+        })
+        .unwrap();
+        db.handle(DbEvent::Error { id: DownloadId(2) }).unwrap();
+
+        db.handle(DbEvent::Started {
+            id: DownloadId(3),
+            source: PersistedDownloadSource::Http {
+                url: "https://example.com/paused.zip".to_string(),
+            },
+            destination: PathBuf::from("/tmp/paused.zip"),
+        })
+        .unwrap();
+        db.handle(DbEvent::Paused {
+            id: DownloadId(3),
+            downloaded_bytes: 12,
+            resume_data: Some(ProviderResumeData::Http(HttpResumeData::new(vec![
+                ChunkSnapshot {
+                    start: 0,
+                    end: 100,
+                    downloaded: 12,
+                },
+            ]))),
+        })
+        .unwrap();
+
+        let history = HistoryReader::open_at(&db_path).unwrap();
+
+        let finished = history.load(HistoryFilter::Finished, "").unwrap();
+        assert_eq!(finished.len(), 1);
+        assert_eq!(finished[0].status, DownloadStatus::Finished);
+        assert_eq!(finished[0].provider_kind, HTTP_PROVIDER_KIND);
+        assert_eq!(finished[0].source_label, "https://example.com/success.zip");
+        assert_eq!(finished[0].destination, "/tmp/success.zip");
+
+        let paused = history.load(HistoryFilter::Paused, "").unwrap();
+        assert_eq!(paused.len(), 1);
+        assert_eq!(paused[0].downloaded_bytes, 12);
+
+        let searched = history.load(HistoryFilter::All, "failure").unwrap();
+        assert_eq!(searched.len(), 1);
+        assert_eq!(searched[0].status, DownloadStatus::Error);
+        assert!(searched[0].source_label.contains("failure"));
+
+        let provider_search = history
+            .load(HistoryFilter::All, HTTP_PROVIDER_KIND)
+            .unwrap();
+        assert_eq!(provider_search.len(), 3);
     }
 }

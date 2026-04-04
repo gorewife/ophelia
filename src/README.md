@@ -10,7 +10,7 @@ Ophelia keeps the frontend and backend split into a few clear layers:
 - `platform/`: platform-specific window/chrome integration
 - `engine/`: download engine, persistence, and provider-specific backend logic
 - `ipc.rs`: local ingress for browser-extension download handoff
-- `settings/`: persistent application settings
+- `settings/`: persistent application settings, including backend runtime knobs such as the IPC port
 
 ## Frontend terms
 
@@ -75,9 +75,10 @@ These names are intentional too:
   - `mod.rs`: persisted settings model and atomic load/save
 - `engine/`
   - `engine.rs`: `DownloadEngine` handle and `EngineActor`
+  - `provider.rs`: internal provider dispatch, provider capabilities, and scheduler-key mapping between the generic scheduler and concrete provider modules
   - `spec.rs`: provider-neutral add/restore request shapes, ingress normalization, and settings-driven provider/config mapping
-  - `types.rs`: shared engine-facing types, persisted source/resume data, progress updates, and engine notifications
-  - `state/`: SQLite persistence, provider-kind-aware storage/bootstrap, DB worker, and history reader
+  - `types.rs`: shared engine-facing types, persisted source/resume data, provider-aware history read models, progress updates, and engine notifications
+  - `state/`: SQLite persistence, provider-kind-aware storage/bootstrap, provider-specific resume-state helpers, DB worker, and history reader
   - `http/`: HTTP-specific executor pipeline
 
 ## Placement rules
@@ -100,4 +101,4 @@ For backend code:
 For deeper backend notes:
 
 - See `docs/architecture.md` for the as-built backend architecture, current gaps, and incremental direction.
-- See `tests/` plus local `engine/state/db.rs` unit tests for backend coverage of the current HTTP executor path, engine notifications, and provider-kind persistence migration.
+- See `tests/` plus local `engine/provider.rs`, `ipc.rs`, `engine/state/db.rs`, and `engine/state/mod.rs` tests for backend coverage of the current HTTP executor path, provider glue, engine notifications, provider-kind persistence migration, history queries, IPC ingress normalization, and DB worker event flow.
