@@ -7,11 +7,11 @@
 use std::ops::Range;
 
 use gpui::{
-    App, Bounds, Context, Element, ElementId, ElementInputHandler, Entity, EntityInputHandler,
-    FocusHandle, Focusable, GlobalElementId, IntoElement, KeyBinding, LayoutId, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point, Render, ShapedLine,
-    SharedString, Style, TextRun, UTF16Selection, Window, actions, div, fill, point, prelude::*,
-    px, relative, rgba, size,
+    App, Bounds, ContentMask, Context, Element, ElementId, ElementInputHandler, Entity,
+    EntityInputHandler, FocusHandle, Focusable, GlobalElementId, IntoElement, KeyBinding, LayoutId,
+    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point, Render,
+    ShapedLine, SharedString, Style, TextRun, UTF16Selection, Window, actions, div, fill, point,
+    prelude::*, px, relative, rgba, size,
 };
 
 use crate::ui::prelude::*;
@@ -74,6 +74,7 @@ pub struct TextField {
     marked_range: Option<Range<usize>>,
     last_layout: Option<ShapedLine>,
     last_bounds: Option<Bounds<Pixels>>,
+    scroll_offset: Pixels,
     is_selecting: bool,
 }
 
@@ -98,6 +99,7 @@ impl TextField {
             marked_range: None,
             last_layout: None,
             last_bounds: None,
+            scroll_offset: px(0.0),
             is_selecting: false,
         }
     }
@@ -314,7 +316,16 @@ impl TextField {
             return self.text.len();
         }
 
-        line.closest_index_for_x(position.x - bounds.left())
+        line.closest_index_for_x(position.x - bounds.left() - self.scroll_offset)
+    }
+
+    fn clamp_scroll_offset(
+        scroll_offset: Pixels,
+        content_width: Pixels,
+        visible_width: Pixels,
+    ) -> Pixels {
+        let min_scroll = (visible_width - content_width).min(px(0.0));
+        scroll_offset.max(min_scroll).min(px(0.0))
     }
 
     fn on_mouse_down(
@@ -448,11 +459,11 @@ impl EntityInputHandler for TextField {
 
         Some(Bounds::from_corners(
             point(
-                bounds.left() + last_layout.x_for_index(range.start),
+                bounds.left() + self.scroll_offset + last_layout.x_for_index(range.start),
                 bounds.top(),
             ),
             point(
-                bounds.left() + last_layout.x_for_index(range.end),
+                bounds.left() + self.scroll_offset + last_layout.x_for_index(range.end),
                 bounds.bottom(),
             ),
         ))
@@ -464,9 +475,12 @@ impl EntityInputHandler for TextField {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<usize> {
-        let line_point = self.last_bounds?.localize(&point)?;
+        let bounds = self.last_bounds?;
+        if point.y < bounds.top() || point.y > bounds.bottom() {
+            return None;
+        }
         let last_layout = self.last_layout.as_ref()?;
-        let utf8_index = last_layout.index_for_x(point.x - line_point.x)?;
+        let utf8_index = last_layout.index_for_x(point.x - bounds.left() - self.scroll_offset)?;
         Some(self.offset_to_utf16(utf8_index))
     }
 }
@@ -485,6 +499,7 @@ struct PrepaintState {
     line: Option<ShapedLine>,
     cursor: Option<PaintQuad>,
     selection: Option<PaintQuad>,
+    scroll_offset: Pixels,
 }
 
 impl IntoElement for TextFieldElement {
@@ -531,11 +546,13 @@ impl Element for TextFieldElement {
     ) -> Self::PrepaintState {
         let input = self.input.read(cx);
         let content = input.text.clone();
+        let content_is_empty = content.is_empty();
         let selected_range = input.selected_range.clone();
         let cursor = input.cursor_offset();
+        let mut scroll_offset = input.scroll_offset;
         let style = window.text_style();
 
-        let (display_text, text_color) = if content.is_empty() {
+        let (display_text, text_color) = if content_is_empty {
             (input.placeholder.clone(), Colors::muted_foreground().into())
         } else {
             (content, style.color)
@@ -582,7 +599,40 @@ impl Element for TextFieldElement {
             .text_system()
             .shape_line(display_text, font_size, &runs, None);
 
-        let cursor_pos = line.x_for_index(cursor);
+        if content_is_empty {
+            scroll_offset = px(0.0);
+        } else {
+            let cursor_pos = line.x_for_index(cursor);
+            let visible_width = bounds.size.width;
+            let safety_margin = px(6.0);
+            let max_cursor_x = (visible_width - safety_margin).max(safety_margin);
+
+            scroll_offset = if scroll_offset + cursor_pos > max_cursor_x {
+                max_cursor_x - cursor_pos
+            } else if scroll_offset + cursor_pos < safety_margin {
+                safety_margin - cursor_pos
+            } else {
+                scroll_offset
+            };
+
+            if !selected_range.is_empty() {
+                let selection_start = line.x_for_index(selected_range.start);
+                let selection_end = line.x_for_index(selected_range.end);
+
+                if input.selection_reversed {
+                    if scroll_offset + selection_end < px(0.0) {
+                        scroll_offset = -selection_end;
+                    }
+                } else if scroll_offset + selection_start < px(0.0) {
+                    scroll_offset = -selection_start;
+                }
+            }
+
+            scroll_offset =
+                TextField::clamp_scroll_offset(scroll_offset, line.width, visible_width);
+        }
+
+        let cursor_pos = line.x_for_index(cursor) + scroll_offset;
         let (selection, cursor) = if selected_range.is_empty() || input.text.is_empty() {
             (
                 None,
@@ -599,11 +649,11 @@ impl Element for TextFieldElement {
                 Some(fill(
                     Bounds::from_corners(
                         point(
-                            bounds.left() + line.x_for_index(selected_range.start),
+                            bounds.left() + scroll_offset + line.x_for_index(selected_range.start),
                             bounds.top(),
                         ),
                         point(
-                            bounds.left() + line.x_for_index(selected_range.end),
+                            bounds.left() + scroll_offset + line.x_for_index(selected_range.end),
                             bounds.bottom(),
                         ),
                     ),
@@ -617,6 +667,7 @@ impl Element for TextFieldElement {
             line: Some(line),
             cursor,
             selection,
+            scroll_offset,
         }
     }
 
@@ -637,23 +688,34 @@ impl Element for TextFieldElement {
             cx,
         );
 
-        if let Some(selection) = prepaint.selection.take() {
-            window.paint_quad(selection);
-        }
-
         let line = prepaint.line.take().unwrap();
-        line.paint(bounds.origin, window.line_height(), window, cx)
+        let scroll_offset = prepaint.scroll_offset;
+        let mask = ContentMask { bounds };
+
+        window.with_content_mask(Some(mask), |window| {
+            if let Some(selection) = prepaint.selection.take() {
+                window.paint_quad(selection);
+            }
+
+            line.paint(
+                point(bounds.origin.x + scroll_offset, bounds.origin.y),
+                window.line_height(),
+                window,
+                cx,
+            )
             .unwrap();
 
-        if focus_handle.is_focused(window)
-            && let Some(cursor) = prepaint.cursor.take()
-        {
-            window.paint_quad(cursor);
-        }
+            if focus_handle.is_focused(window)
+                && let Some(cursor) = prepaint.cursor.take()
+            {
+                window.paint_quad(cursor);
+            }
+        });
 
         self.input.update(cx, |input, _cx| {
             input.last_layout = Some(line);
             input.last_bounds = Some(bounds);
+            input.scroll_offset = scroll_offset;
         });
     }
 }
@@ -666,6 +728,8 @@ impl Render for TextField {
             .id(("text-field", cx.entity_id()))
             .flex()
             .w_full()
+            .min_w_0()
+            .overflow_hidden()
             .key_context("TextField")
             .track_focus(&self.focus_handle(cx))
             .cursor_text()
