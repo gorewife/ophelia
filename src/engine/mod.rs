@@ -7,5 +7,5 @@ pub mod state;
 pub mod types;
 
 pub use engine::DownloadEngine;
-pub use spec::{DownloadSource, DownloadSpec, RestoredDownload};
+pub use spec::{AddDownloadRequest, DownloadSource, DownloadSpec, RestoredDownload};
 pub use types::*;

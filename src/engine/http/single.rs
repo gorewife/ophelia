@@ -17,7 +17,11 @@ use super::task::TaskFinalState;
 const EMA_ALPHA: f64 = 0.3;
 const WINDOW_SECS: f64 = 2.0;
 
-fn task_state(status: DownloadStatus, downloaded_bytes: u64, total_bytes: Option<u64>) -> TaskFinalState {
+fn task_state(
+    status: DownloadStatus,
+    downloaded_bytes: u64,
+    total_bytes: Option<u64>,
+) -> TaskFinalState {
     TaskFinalState {
         status,
         downloaded_bytes,

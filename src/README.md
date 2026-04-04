@@ -69,15 +69,15 @@ These names are intentional too:
 
 ### Backend-adjacent root
 
-- `app.rs`: GPUI-facing download model, engine bootstrap, progress polling, and history bridge
-- `ipc.rs`: local Axum server used by the browser extension
+- `app.rs`: GPUI-facing download model, backend service owner, progress polling, and history bridge
+- `ipc.rs`: local Axum server plus app-owned IPC ingress handle
 - `settings/`
   - `mod.rs`: persisted settings model and atomic load/save
 - `engine/`
   - `engine.rs`: `DownloadEngine` handle and `EngineActor`
-  - `spec.rs`: provider-neutral add/restore request shapes
-  - `types.rs`: shared engine-facing types and events
-  - `state/`: SQLite persistence, DB worker, and history reader
+  - `spec.rs`: provider-neutral add/restore request shapes, ingress normalization, and settings-driven provider/config mapping
+  - `types.rs`: shared engine-facing types, persisted source/resume data, progress updates, and engine notifications
+  - `state/`: SQLite persistence, provider-kind-aware storage/bootstrap, DB worker, and history reader
   - `http/`: HTTP-specific executor pipeline
 
 ## Placement rules
@@ -94,10 +94,10 @@ For backend code:
 - Put provider-neutral orchestration and shared engine types in `engine/`.
 - Put protocol/tool-specific download logic in a dedicated provider submodule such as `engine/http/`.
 - Put persistence and history access in `engine/state/`, not in provider modules.
-- Put transport-specific ingress in modules like `ipc.rs`, not inside provider implementations.
+- Put transport-specific ingress in modules like `ipc.rs`, not inside provider implementations or the engine actor.
 - Keep `app.rs` focused on bridging GPUI state to backend services rather than accumulating provider-specific logic.
 
 For deeper backend notes:
 
 - See `docs/architecture.md` for the as-built backend architecture, current gaps, and incremental direction.
-- See `tests/` for backend integration coverage of the current HTTP executor path.
+- See `tests/` plus local `engine/state/db.rs` unit tests for backend coverage of the current HTTP executor path, engine notifications, and provider-kind persistence migration.

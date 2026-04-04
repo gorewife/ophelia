@@ -24,38 +24,30 @@ use tokio_util::sync::CancellationToken;
 
 use crate::engine::http::{TaskFinalState, TokenBucket, download_task};
 use crate::engine::{
-    ChunkSnapshot, DbEvent, DownloadId, DownloadSource, DownloadSpec, DownloadStatus, ProgressUpdate,
-    RestoredDownload,
+    ChunkSnapshot, DbEvent, DownloadId, DownloadSource, DownloadSpec, DownloadStatus,
+    EngineNotification, HttpResumeData, PersistedDownloadSource, ProgressUpdate,
+    ProviderResumeData, RestoredDownload,
 };
 use crate::settings::Settings;
 
 fn host_from_url(url: &str) -> String {
     let after_scheme = url.split_once("://").map(|(_, rest)| rest).unwrap_or(url);
     let after_auth = after_scheme.rsplit('@').next().unwrap_or(after_scheme);
-    after_auth.split('/').next().unwrap_or(after_auth).to_lowercase()
+    after_auth
+        .split('/')
+        .next()
+        .unwrap_or(after_auth)
+        .to_lowercase()
 }
 
 #[allow(dead_code)]
 enum EngineCommand {
-    Add {
-        id: DownloadId,
-        spec: DownloadSpec,
-    },
-    Pause {
-        id: DownloadId,
-    },
-    Resume {
-        id: DownloadId,
-    },
-    Cancel {
-        id: DownloadId,
-    },
-    Restore {
-        download: RestoredDownload,
-    },
-    UpdateSettings {
-        settings: Settings,
-    },
+    Add { id: DownloadId, spec: DownloadSpec },
+    Pause { id: DownloadId },
+    Resume { id: DownloadId },
+    Cancel { id: DownloadId },
+    Restore { download: RestoredDownload },
+    UpdateSettings { settings: Settings },
     Shutdown,
 }
 
@@ -72,23 +64,27 @@ struct TaskEntry {
     /// Fired on soft pause. Hard cancel uses handle.abort() instead.
     pause_token: CancellationToken,
     /// Written by the task on pause; read by the engine after awaiting the handle.
-    pause_sink: Arc<Mutex<Option<Vec<ChunkSnapshot>>>>,
+    pause_sink: TaskPauseSink,
     /// Kept for re-spawning on resume.
     spec: DownloadSpec,
+}
+
+enum TaskPauseSink {
+    Http(Arc<Mutex<Option<Vec<ChunkSnapshot>>>>),
 }
 
 /// State stored when a download is paused, used to re-spawn on resume.
 struct PausedTask {
     spec: DownloadSpec,
-    snapshots: Vec<ChunkSnapshot>,
+    resume_data: Option<ProviderResumeData>,
 }
 
-/// A download waiting in the queue. `resume_from` is Some when the user
-/// resumed a paused download that couldn't start immediately.
+/// A download waiting in the queue. `resume_data` is populated when the user
+/// resumed a paused download that could not start immediately.
 struct QueuedTask {
     id: DownloadId,
     spec: DownloadSpec,
-    resume_from: Option<Vec<ChunkSnapshot>>,
+    resume_data: Option<ProviderResumeData>,
 }
 
 // --- public engine handle ------------------------------------------------
@@ -98,7 +94,7 @@ pub struct DownloadEngine {
     runtime: Runtime,
     cmd_tx: mpsc::UnboundedSender<EngineCommand>,
     progress_rx: mpsc::UnboundedReceiver<ProgressUpdate>,
-    ipc_rx: mpsc::UnboundedReceiver<crate::ipc::DownloadRequest>,
+    notification_rx: mpsc::UnboundedReceiver<EngineNotification>,
     next_id: u64,
 }
 
@@ -111,17 +107,19 @@ impl DownloadEngine {
         let runtime = Runtime::new().expect("failed to create tokio runtime");
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let (progress_tx, progress_rx) = mpsc::unbounded_channel();
-        let (ipc_tx, ipc_rx) = mpsc::unbounded_channel();
+        let (notification_tx, notification_rx) = mpsc::unbounded_channel();
         let (done_tx, done_rx) = mpsc::unbounded_channel::<TaskDone>();
 
-        runtime.spawn(EngineActor::new(progress_tx, settings, db_tx, done_tx).run(cmd_rx, done_rx));
-        runtime.spawn(crate::ipc::serve(ipc_tx));
+        runtime.spawn(
+            EngineActor::new(progress_tx, notification_tx, settings, db_tx, done_tx)
+                .run(cmd_rx, done_rx),
+        );
 
         Self {
             runtime,
             cmd_tx,
             progress_rx,
-            ipc_rx,
+            notification_rx,
             next_id: initial_next_id,
         }
     }
@@ -130,11 +128,6 @@ impl DownloadEngine {
     /// Does not start a task, user must resume explicitly.
     pub fn restore(&self, download: RestoredDownload) {
         let _ = self.cmd_tx.send(EngineCommand::Restore { download });
-    }
-
-    /// Non-blocking drain of one pending IPC download request from the browser extension.
-    pub fn poll_ipc(&mut self) -> Option<crate::ipc::DownloadRequest> {
-        self.ipc_rx.try_recv().ok()
     }
 
     pub fn add(&mut self, spec: DownloadSpec) -> DownloadId {
@@ -163,6 +156,10 @@ impl DownloadEngine {
     pub fn poll_progress(&mut self) -> Option<ProgressUpdate> {
         self.progress_rx.try_recv().ok()
     }
+
+    pub fn poll_notification(&mut self) -> Option<EngineNotification> {
+        self.notification_rx.try_recv().ok()
+    }
 }
 
 // --- actor ---------------------------------------------------------------
@@ -177,6 +174,7 @@ struct EngineActor {
     max_concurrent: usize,
     done_tx: mpsc::UnboundedSender<TaskDone>,
     progress_tx: mpsc::UnboundedSender<ProgressUpdate>,
+    notification_tx: mpsc::UnboundedSender<EngineNotification>,
     settings: Settings,
     /// One semaphore per hostname; permits = settings.max_connections_per_server.
     /// Shared across all downloads targeting the same host.
@@ -189,6 +187,7 @@ struct EngineActor {
 impl EngineActor {
     fn new(
         progress_tx: mpsc::UnboundedSender<ProgressUpdate>,
+        notification_tx: mpsc::UnboundedSender<EngineNotification>,
         settings: Settings,
         db_tx: std::sync::mpsc::Sender<DbEvent>,
         done_tx: mpsc::UnboundedSender<TaskDone>,
@@ -202,6 +201,7 @@ impl EngineActor {
             max_concurrent,
             done_tx,
             progress_tx,
+            notification_tx,
             settings,
             server_semaphores: HashMap::new(),
             db_tx,
@@ -241,7 +241,7 @@ impl EngineActor {
                             tracing::info!(id = download.id.0, "restoring paused download from database");
                             self.paused.insert(download.id, PausedTask {
                                 spec: download.spec,
-                                snapshots: download.chunks,
+                                resume_data: download.resume_data,
                             });
                         }
                         EngineCommand::UpdateSettings { settings } => {
@@ -264,17 +264,21 @@ impl EngineActor {
         &mut self,
         id: DownloadId,
         spec: DownloadSpec,
-        resume_from: Option<Vec<ChunkSnapshot>>,
+        resume_data: Option<ProviderResumeData>,
     ) {
         let pause_token = CancellationToken::new();
-        let pause_sink: Arc<Mutex<Option<Vec<ChunkSnapshot>>>> = Arc::new(Mutex::new(None));
         let tx = self.progress_tx.clone();
         let done_tx = self.done_tx.clone();
 
-        let handle = match &spec.source {
+        let (handle, pause_sink) = match &spec.source {
             DownloadSource::Http { url, config } => {
+                let pause_sink: Arc<Mutex<Option<Vec<ChunkSnapshot>>>> = Arc::new(Mutex::new(None));
                 let server_semaphore = self.server_semaphore(url);
-                tokio::spawn({
+                let resume_from = resume_data
+                    .as_ref()
+                    .and_then(ProviderResumeData::as_http)
+                    .map(|data| data.chunks.clone());
+                let handle = tokio::spawn({
                     let url_ = url.clone();
                     let dest_ = spec.destination.clone();
                     let cfg_ = config.clone();
@@ -297,7 +301,8 @@ impl EngineActor {
                         .await;
                         let _ = done_tx.send(TaskDone { id, final_state });
                     }
-                })
+                });
+                (handle, TaskPauseSink::Http(pause_sink))
             }
         };
 
@@ -324,7 +329,7 @@ impl EngineActor {
                 "starting queued download"
             );
             let _ = self.db_tx.send(self.started_event(next.id, &next.spec));
-            self.spawn_task(next.id, next.spec, next.resume_from);
+            self.spawn_task(next.id, next.spec, next.resume_data);
         }
     }
 
@@ -343,13 +348,13 @@ impl EngineActor {
             self.queue.push_back(QueuedTask {
                 id,
                 spec,
-                resume_from: None,
+                resume_data: None,
             });
         }
     }
 
     /// Soft pause: fire the CancellationToken, wait for the task to drain, then
-    /// read the chunk snapshots it left in the pause_sink.
+    /// read the provider-specific resume state it left in the pause sink.
     /// If the download is in the queue (not yet started), move it to paused directly.
     async fn handle_pause(&mut self, id: DownloadId) {
         if let Some(entry) = self.tasks.remove(&id) {
@@ -358,19 +363,26 @@ impl EngineActor {
             // Task exits quickly: the biased select! in download_chunk fires on the
             // next loop iteration, flushes its write buffer, and returns.
             let _ = entry.handle.await;
-            let snapshots = entry.pause_sink.lock().unwrap().take();
-            if let Some(snaps) = snapshots {
-                let downloaded_bytes: u64 = snaps.iter().map(|c| c.downloaded).sum();
+            let resume_data = match entry.pause_sink {
+                TaskPauseSink::Http(sink) => sink
+                    .lock()
+                    .unwrap()
+                    .take()
+                    .map(HttpResumeData::new)
+                    .map(ProviderResumeData::Http),
+            };
+            if let Some(resume_data) = resume_data {
+                let downloaded_bytes = resume_data.downloaded_bytes();
                 let _ = self.db_tx.send(DbEvent::Paused {
                     id,
                     downloaded_bytes,
-                    chunks: snaps.clone(),
+                    resume_data: Some(resume_data.clone()),
                 });
                 self.paused.insert(
                     id,
                     PausedTask {
                         spec: entry.spec,
-                        snapshots: snaps,
+                        resume_data: Some(resume_data),
                     },
                 );
             }
@@ -381,13 +393,19 @@ impl EngineActor {
             let _ = self.db_tx.send(DbEvent::Paused {
                 id,
                 downloaded_bytes: 0,
-                chunks: Vec::new(),
+                resume_data: None,
             });
+            let _ = self.notification_tx.send(self.status_notification(
+                id,
+                DownloadStatus::Paused,
+                0,
+                None,
+            ));
             self.paused.insert(
                 id,
                 PausedTask {
                     spec: task.spec,
-                    snapshots: Vec::new(),
+                    resume_data: task.resume_data,
                 },
             );
         }
@@ -397,14 +415,27 @@ impl EngineActor {
         if let Some(pt) = self.paused.remove(&id) {
             tracing::info!(id = id.0, "resuming download");
             let _ = self.db_tx.send(DbEvent::Resumed { id });
+            let (downloaded_bytes, total_bytes) = snapshot_totals(pt.resume_data.as_ref());
             if self.tasks.len() < self.max_concurrent {
-                self.spawn_task(id, pt.spec, Some(pt.snapshots));
+                let _ = self.notification_tx.send(self.status_notification(
+                    id,
+                    DownloadStatus::Downloading,
+                    downloaded_bytes,
+                    total_bytes,
+                ));
+                self.spawn_task(id, pt.spec, pt.resume_data);
             } else {
                 // At capacity -> put at front of queue so it's next to start.
+                let _ = self.notification_tx.send(self.status_notification(
+                    id,
+                    DownloadStatus::Pending,
+                    downloaded_bytes,
+                    total_bytes,
+                ));
                 self.queue.push_front(QueuedTask {
                     id,
                     spec: pt.spec,
-                    resume_from: Some(pt.snapshots),
+                    resume_data: pt.resume_data,
                 });
             }
         }
@@ -421,6 +452,9 @@ impl EngineActor {
         self.queue.retain(|t| t.id != id);
         self.paused.remove(&id);
         let _ = self.db_tx.send(DbEvent::Removed { id });
+        let _ = self
+            .notification_tx
+            .send(EngineNotification::Removed { id });
     }
 
     fn handle_shutdown(&mut self) {
@@ -474,7 +508,8 @@ impl EngineActor {
         let old_per_server = self.settings.max_connections_per_server;
 
         self.max_concurrent = settings.max_concurrent_downloads;
-        self.global_throttle.set_limit(settings.global_speed_limit_bps);
+        self.global_throttle
+            .set_limit(settings.global_speed_limit_bps);
         self.adjust_server_semaphores(old_per_server, settings.max_connections_per_server);
         self.settings = settings;
 
@@ -504,8 +539,35 @@ impl EngineActor {
     fn started_event(&self, id: DownloadId, spec: &DownloadSpec) -> DbEvent {
         DbEvent::Started {
             id,
-            url: spec.url().to_string(),
+            source: match &spec.source {
+                DownloadSource::Http { url, .. } => {
+                    PersistedDownloadSource::Http { url: url.clone() }
+                }
+            },
             destination: spec.destination().to_path_buf(),
         }
+    }
+
+    fn status_notification(
+        &self,
+        id: DownloadId,
+        status: DownloadStatus,
+        downloaded_bytes: u64,
+        total_bytes: Option<u64>,
+    ) -> EngineNotification {
+        EngineNotification::Update(ProgressUpdate {
+            id,
+            status,
+            downloaded_bytes,
+            total_bytes,
+            speed_bytes_per_sec: 0,
+        })
+    }
+}
+
+fn snapshot_totals(resume_data: Option<&ProviderResumeData>) -> (u64, Option<u64>) {
+    match resume_data {
+        Some(data) => (data.downloaded_bytes(), data.total_bytes()),
+        None => (0, None),
     }
 }

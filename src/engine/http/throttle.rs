@@ -49,7 +49,8 @@ impl TokenBucket {
         let elapsed = now.duration_since(inner.last_refill).as_secs_f64();
         inner.last_refill = now;
         // Refill up to 1 second's worth (max burst = 1s of bandwidth).
-        inner.available = (inner.available + elapsed * inner.limit_bps as f64).min(inner.limit_bps as f64);
+        inner.available =
+            (inner.available + elapsed * inner.limit_bps as f64).min(inner.limit_bps as f64);
     }
 
     /// Consume `bytes` tokens. Returns the duration to sleep to stay within

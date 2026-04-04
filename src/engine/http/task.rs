@@ -40,7 +40,11 @@ pub struct TaskFinalState {
     pub total_bytes: Option<u64>,
 }
 
-fn task_state(status: DownloadStatus, downloaded_bytes: u64, total_bytes: Option<u64>) -> TaskFinalState {
+fn task_state(
+    status: DownloadStatus,
+    downloaded_bytes: u64,
+    total_bytes: Option<u64>,
+) -> TaskFinalState {
     TaskFinalState {
         status,
         downloaded_bytes,
