@@ -1,9 +1,4 @@
-pub mod app_menu_bar;
-pub mod directory_input;
-pub mod icon;
-pub mod logo;
-pub mod modal;
-pub mod number_input;
+pub mod chrome;
+pub mod controls;
 pub mod prelude;
-pub mod text_field;
-pub mod window_header;
+pub mod primitives;

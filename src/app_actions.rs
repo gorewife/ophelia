@@ -2,7 +2,7 @@ use gpui::{App, AppContext, Bounds, Entity, Global, WindowHandle, px, size};
 
 use crate::app_menu;
 use crate::platform;
-use crate::views::main_window::MainWindow;
+use crate::views::main::main_window::MainWindow;
 use crate::views::settings::{SettingsClosed, SettingsWindow};
 
 pub struct AppState {

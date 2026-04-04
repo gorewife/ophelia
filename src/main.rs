@@ -15,7 +15,7 @@ mod views;
 
 use assets::Assets;
 use gpui::{App, Application, Bounds, prelude::*, px, size};
-use views::main_window::MainWindow;
+use views::main::main_window::MainWindow;
 
 fn run() {
     Application::new()
@@ -25,9 +25,9 @@ fn run() {
 
             app_menu::init(cx);
             app_actions::init(cx);
-            ui::modal::bind_actions(cx);
-            ui::number_input::init(cx);
-            ui::text_field::init(cx);
+            ui::chrome::modal::bind_actions(cx);
+            ui::controls::number_input::init(cx);
+            ui::controls::text_field::init(cx);
 
             cx.text_system()
                 .add_fonts(vec![std::borrow::Cow::Owned(
