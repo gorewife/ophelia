@@ -87,6 +87,9 @@ settings:
         download_folder_placeholder: "Downloads folder"
     network:
         section: "Network"
+        ipc_port_label: "IPC Port"
+        ipc_port_description: "Localhost port used by the browser extension and other local IPC clients"
+        ipc_port_placeholder: "7373"
         global_speed_limit_label: "Global Speed Limit"
         global_speed_limit_description: "Caps total download bandwidth across all active downloads. Enter KB/s, or 0 for unlimited."
         global_speed_limit_placeholder: "0"

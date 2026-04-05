@@ -8,6 +8,11 @@ pub(super) fn render(this: &SettingsWindow) -> gpui::Div {
         .flex_col()
         .gap(px(20.0))
         .child(super::setting_row(
+            t!("settings.network.ipc_port_label").to_string(),
+            t!("settings.network.ipc_port_description").to_string(),
+            super::setting_number_input(this.ipc_port_input.clone()),
+        ))
+        .child(super::setting_row(
             t!("settings.network.global_speed_limit_label").to_string(),
             t!("settings.network.global_speed_limit_description").to_string(),
             super::setting_number_input(this.global_speed_limit_input.clone()),
