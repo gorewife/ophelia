@@ -47,79 +47,38 @@ fn render_collision_strategy(
     this: &SettingsWindow,
     cx: &mut Context<SettingsWindow>,
 ) -> impl IntoElement {
-    h_flex()
-        .overflow_hidden()
-        .rounded(px(Chrome::BUTTON_RADIUS))
-        .border_1()
-        .border_color(Colors::input_border())
-        .bg(Colors::background())
-        .child(collision_strategy_button(
-            this,
-            CollisionStrategy::Rename,
-            t!("settings.destinations.collision_strategy_rename").to_string(),
-            cx,
-        ))
-        .child(collision_strategy_button(
-            this,
-            CollisionStrategy::Replace,
-            t!("settings.destinations.collision_strategy_replace").to_string(),
-            cx,
-        ))
-}
-
-fn collision_strategy_button(
-    this: &SettingsWindow,
-    strategy: CollisionStrategy,
-    label: impl Into<gpui::SharedString>,
-    cx: &mut Context<SettingsWindow>,
-) -> impl IntoElement {
     let entity = cx.entity();
-    let selected = this.settings.collision_strategy == strategy;
-    let label = label.into();
-    let id = match strategy {
-        CollisionStrategy::Rename => "collision-strategy-rename",
-        CollisionStrategy::Replace => "collision-strategy-replace",
-    };
 
-    div()
-        .id(id)
-        .min_w(px(88.0))
-        .h(px(Chrome::BUTTON_HEIGHT))
-        .px(px(Chrome::BUTTON_PADDING_X))
-        .when(matches!(strategy, CollisionStrategy::Rename), |this| {
-            this.rounded_l(px(Chrome::BUTTON_RADIUS))
-        })
-        .when(matches!(strategy, CollisionStrategy::Replace), |this| {
-            this.rounded_r(px(Chrome::BUTTON_RADIUS))
-        })
-        .bg(if selected {
-            Colors::muted()
-        } else {
-            Colors::background()
-        })
-        .when(matches!(strategy, CollisionStrategy::Rename), |this| {
-            this.border_r_1().border_color(Colors::input_border())
-        })
-        .flex()
-        .items_center()
-        .justify_center()
-        .text_sm()
-        .font_weight(if selected {
-            gpui::FontWeight::SEMIBOLD
-        } else {
-            gpui::FontWeight::NORMAL
-        })
-        .text_color(if selected {
-            Colors::foreground()
-        } else {
-            Colors::muted_foreground()
-        })
-        .cursor_pointer()
-        .hover(|style| style.bg(Colors::muted()))
-        .on_click(move |_, _, app| {
-            let _ = entity.update(app, |this, cx| this.set_collision_strategy(strategy, cx));
-        })
-        .child(label)
+    SegmentedControl::new("collision-strategy")
+        .option(
+            SegmentedControlOption::new(
+                "collision-strategy-rename",
+                t!("settings.destinations.collision_strategy_rename").to_string(),
+            )
+            .selected(this.settings.collision_strategy == CollisionStrategy::Rename)
+            .min_width(88.0)
+            .on_click({
+                let entity = entity.clone();
+                move |_, _, app| {
+                    let _ = entity.update(app, |this, cx| {
+                        this.set_collision_strategy(CollisionStrategy::Rename, cx);
+                    });
+                }
+            }),
+        )
+        .option(
+            SegmentedControlOption::new(
+                "collision-strategy-replace",
+                t!("settings.destinations.collision_strategy_replace").to_string(),
+            )
+            .selected(this.settings.collision_strategy == CollisionStrategy::Replace)
+            .min_width(88.0)
+            .on_click(move |_, _, app| {
+                let _ = entity.update(app, |this, cx| {
+                    this.set_collision_strategy(CollisionStrategy::Replace, cx);
+                });
+            }),
+        )
 }
 
 fn render_destination_rules_switch(
@@ -179,16 +138,14 @@ fn render_destination_rules_section(
                         ),
                 )
                 .child(
-                    div()
-                        .flex()
+                    h_flex()
                         .items_center()
                         .gap(px(Spacing::SETTINGS_INLINE_GAP))
                         .child(
-                            action_button(
+                            Button::new(
                                 "restore-default-destination-rules",
                                 t!("settings.destinations.destination_rules_restore_defaults")
                                     .to_string(),
-                                None,
                             )
                             .on_click(move |_, _, app| {
                                 let _ = restore_entity.update(app, |this, cx| {
@@ -197,11 +154,11 @@ fn render_destination_rules_section(
                             }),
                         )
                         .child(
-                            action_button(
+                            Button::new(
                                 "add-destination-rule",
                                 t!("settings.destinations.destination_rules_add").to_string(),
-                                Some(IconName::Plus),
                             )
+                            .icon(IconName::Plus)
                             .on_click(move |_, _, app| {
                                 let _ = add_entity
                                     .update(app, |this, cx| this.add_destination_rule(cx));
@@ -251,33 +208,6 @@ fn render_destination_rules_section(
                         }),
                 ),
         )
-}
-
-fn action_button(
-    id: impl Into<gpui::ElementId>,
-    label: String,
-    icon_name: Option<IconName>,
-) -> gpui::Stateful<gpui::Div> {
-    div()
-        .id(id)
-        .px(px(Chrome::MENU_ITEM_PADDING_X))
-        .py(px(Chrome::MENU_ITEM_PADDING_Y))
-        .rounded(px(Chrome::BUTTON_RADIUS))
-        .border_1()
-        .border_color(Colors::input_border())
-        .bg(Colors::background())
-        .flex()
-        .items_center()
-        .gap(px(Spacing::SETTINGS_INLINE_GAP))
-        .text_sm()
-        .font_weight(gpui::FontWeight::SEMIBOLD)
-        .text_color(Colors::foreground())
-        .cursor_pointer()
-        .hover(|style| style.bg(Colors::muted()))
-        .when_some(icon_name, |this, icon_name| {
-            this.child(icon_sm(icon_name, Colors::muted_foreground()))
-        })
-        .child(label)
 }
 
 fn render_destination_rule_row(

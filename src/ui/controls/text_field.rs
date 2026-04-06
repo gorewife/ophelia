@@ -359,6 +359,38 @@ impl TextField {
         scroll_offset.max(min_scroll).min(px(0.0))
     }
 
+    fn adjusted_scroll_offset(
+        scroll_offset: Pixels,
+        cursor_pos: Pixels,
+        selection_bounds: Option<(Pixels, Pixels)>,
+        selection_reversed: bool,
+        content_width: Pixels,
+        visible_width: Pixels,
+    ) -> Pixels {
+        let safety_margin = px(6.0);
+        let max_cursor_x = (visible_width - safety_margin).max(safety_margin);
+
+        let mut scroll_offset = if scroll_offset + cursor_pos > max_cursor_x {
+            max_cursor_x - cursor_pos
+        } else if scroll_offset + cursor_pos < safety_margin {
+            safety_margin - cursor_pos
+        } else {
+            scroll_offset
+        };
+
+        if let Some((selection_start, selection_end)) = selection_bounds {
+            if selection_reversed {
+                if scroll_offset + selection_end < px(0.0) {
+                    scroll_offset = -selection_end;
+                }
+            } else if scroll_offset + selection_start < px(0.0) {
+                scroll_offset = -selection_start;
+            }
+        }
+
+        Self::clamp_scroll_offset(scroll_offset, content_width, visible_width)
+    }
+
     fn on_mouse_down(
         &mut self,
         event: &MouseDownEvent,
@@ -635,32 +667,21 @@ impl Element for TextFieldElement {
         } else {
             let cursor_pos = line.x_for_index(cursor);
             let visible_width = bounds.size.width;
-            let safety_margin = px(6.0);
-            let max_cursor_x = (visible_width - safety_margin).max(safety_margin);
+            let selection_bounds = (!selected_range.is_empty()).then(|| {
+                (
+                    line.x_for_index(selected_range.start),
+                    line.x_for_index(selected_range.end),
+                )
+            });
 
-            scroll_offset = if scroll_offset + cursor_pos > max_cursor_x {
-                max_cursor_x - cursor_pos
-            } else if scroll_offset + cursor_pos < safety_margin {
-                safety_margin - cursor_pos
-            } else {
-                scroll_offset
-            };
-
-            if !selected_range.is_empty() {
-                let selection_start = line.x_for_index(selected_range.start);
-                let selection_end = line.x_for_index(selected_range.end);
-
-                if input.selection_reversed {
-                    if scroll_offset + selection_end < px(0.0) {
-                        scroll_offset = -selection_end;
-                    }
-                } else if scroll_offset + selection_start < px(0.0) {
-                    scroll_offset = -selection_start;
-                }
-            }
-
-            scroll_offset =
-                TextField::clamp_scroll_offset(scroll_offset, line.width, visible_width);
+            scroll_offset = TextField::adjusted_scroll_offset(
+                scroll_offset,
+                cursor_pos,
+                selection_bounds,
+                input.selection_reversed,
+                line.width,
+                visible_width,
+            );
         }
 
         let cursor_pos = line.x_for_index(cursor) + scroll_offset;
@@ -748,6 +769,72 @@ impl Element for TextFieldElement {
             input.last_bounds = Some(bounds);
             input.scroll_offset = scroll_offset;
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clamp_scroll_offset_keeps_content_within_visible_bounds() {
+        assert_eq!(
+            TextField::clamp_scroll_offset(px(-20.0), px(300.0), px(100.0)),
+            px(-20.0)
+        );
+        assert_eq!(
+            TextField::clamp_scroll_offset(px(40.0), px(300.0), px(100.0)),
+            px(0.0)
+        );
+        assert_eq!(
+            TextField::clamp_scroll_offset(px(-260.0), px(300.0), px(100.0)),
+            px(-200.0)
+        );
+    }
+
+    #[test]
+    fn adjusted_scroll_offset_keeps_caret_visible_for_long_lines() {
+        assert_eq!(
+            TextField::adjusted_scroll_offset(
+                px(0.0),
+                px(220.0),
+                None,
+                false,
+                px(320.0),
+                px(100.0),
+            ),
+            px(-126.0)
+        );
+    }
+
+    #[test]
+    fn adjusted_scroll_offset_keeps_forward_selection_start_in_view() {
+        assert_eq!(
+            TextField::adjusted_scroll_offset(
+                px(-50.0),
+                px(80.0),
+                Some((px(20.0), px(140.0))),
+                false,
+                px(220.0),
+                px(100.0),
+            ),
+            px(-20.0)
+        );
+    }
+
+    #[test]
+    fn adjusted_scroll_offset_keeps_reversed_selection_end_in_view() {
+        assert_eq!(
+            TextField::adjusted_scroll_offset(
+                px(-50.0),
+                px(80.0),
+                Some((px(20.0), px(20.0))),
+                true,
+                px(220.0),
+                px(100.0),
+            ),
+            px(-20.0)
+        );
     }
 }
 

@@ -13,15 +13,14 @@
 **       じしf_,)ノ
 **************************************************/
 
-use std::{
-    path::{Path, PathBuf},
-    rc::Rc,
-};
+use std::rc::Rc;
 
+use crate::app::{Downloads, SidebarStorageSummary};
 use crate::app_menu;
 use crate::ui::prelude::*;
 use gpui::{
-    App, Context, Hsla, Render, RenderOnce, SharedString, Window, div, prelude::*, px, relative,
+    App, Context, Entity, Hsla, Render, RenderOnce, SharedString, Window, div, prelude::*, px,
+    relative,
 };
 use rust_i18n::t;
 
@@ -33,10 +32,20 @@ pub struct Sidebar {
     pub active_item: usize,
     pub collapsed: bool,
     pub expanded_width: f32,
-    pub download_dir: PathBuf,
+    pub downloads: Option<Entity<Downloads>>,
 }
 
 impl Sidebar {
+    pub fn new(downloads: Entity<Downloads>, cx: &mut Context<Self>) -> Self {
+        cx.observe(&downloads, |_, _, cx| cx.notify()).detach();
+        Self {
+            active_item: 0,
+            collapsed: false,
+            expanded_width: Spacing::SIDEBAR_WIDTH,
+            downloads: Some(downloads),
+        }
+    }
+
     pub fn is_collapsed(&self) -> bool {
         self.collapsed
     }
@@ -53,7 +62,7 @@ impl Sidebar {
         self.collapsed = !self.collapsed;
     }
 
-    fn view_model(&self) -> SidebarViewModel {
+    fn view_model(&self, cx: &App) -> SidebarViewModel {
         SidebarViewModel {
             collapsed: self.collapsed,
             nav_items: vec![
@@ -70,14 +79,19 @@ impl Sidebar {
                     self.active_item == 1,
                 ),
             ],
-            storage: StorageCardModel::from_path(&self.download_dir),
+            storage: StorageCardModel::from_summary(
+                self.downloads
+                    .as_ref()
+                    .map(|downloads| downloads.read(cx).storage_summary())
+                    .unwrap_or_default(),
+            ),
         }
     }
 }
 
 impl Render for Sidebar {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let vm = self.view_model();
+        let vm = self.view_model(cx);
         let weak = cx.weak_entity();
 
         let toggle_sidebar: ClickHandler = Rc::new({
@@ -183,18 +197,11 @@ struct StorageCardModel {
 }
 
 impl StorageCardModel {
-    fn from_path(path: &Path) -> Self {
-        let (used, total) = query_disk(path);
-        let fraction = if total > 0 {
-            (used as f32 / total as f32).clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
-
+    fn from_summary(summary: SidebarStorageSummary) -> Self {
         Self {
-            used: format_gb(used),
-            total: format_gb(total),
-            fraction,
+            used: format_gb(summary.used_bytes),
+            total: format_gb(summary.total_bytes),
+            fraction: summary.fraction,
         }
     }
 }
@@ -470,22 +477,6 @@ fn sidebar_separator() -> gpui::Div {
     div().mb(px(10.0)).h(px(1.0)).bg(Colors::border())
 }
 
-fn query_disk(path: &Path) -> (u64, u64) {
-    use std::ffi::CString;
-
-    let Ok(cpath) = CString::new(path.to_string_lossy().as_bytes()) else {
-        return (0, 0);
-    };
-    let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
-    if unsafe { libc::statvfs(cpath.as_ptr(), &mut stat) } != 0 {
-        return (0, 0);
-    }
-    let block = stat.f_frsize as u64;
-    let total = block * stat.f_blocks as u64;
-    let avail = block * stat.f_bavail as u64;
-    (total.saturating_sub(avail), total)
-}
-
 fn format_gb(bytes: u64) -> String {
     const GB: f64 = 1_000_000_000.0;
     const TB: f64 = 1_000_000_000_000.0;
@@ -507,7 +498,7 @@ mod tests {
             active_item: 0,
             collapsed: false,
             expanded_width: 280.0,
-            download_dir: PathBuf::from("/tmp"),
+            downloads: None,
         };
 
         sidebar.toggle_collapsed();

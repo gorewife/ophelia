@@ -27,15 +27,15 @@
 //!   5. Restore saved downloads into the engine's paused map and SoA vecs.
 
 use std::collections::VecDeque;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use gpui::{Context, SharedString};
 
 use crate::engine::state::{self, HistoryReader};
 use crate::engine::{
-    AddDownloadRequest, DownloadControlAction, DownloadEngine, DownloadId, DownloadSpec,
-    DownloadStatus, EngineNotification, HistoryFilter, HistoryRow, ProgressUpdate,
+    AddDownloadRequest, ArtifactState, DownloadControlAction, DownloadEngine, DownloadId,
+    DownloadSpec, DownloadStatus, EngineNotification, HistoryFilter, HistoryRow, ProgressUpdate,
     RestoredDownload, SavedDownload, TransferControlSupport,
 };
 use crate::ipc::IpcServer;
@@ -70,6 +70,163 @@ pub struct Downloads {
     history_reader: HistoryReader,
     pub history: Vec<HistoryRow>,
     pub history_filter: HistoryFilter,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransferDisplayState {
+    Active,
+    Paused,
+    Queued,
+    Finished,
+    Error,
+}
+
+impl TransferDisplayState {
+    fn from_status(status: DownloadStatus) -> Self {
+        match status {
+            DownloadStatus::Downloading => Self::Active,
+            DownloadStatus::Paused => Self::Paused,
+            DownloadStatus::Finished => Self::Finished,
+            DownloadStatus::Error | DownloadStatus::Cancelled => Self::Error,
+            DownloadStatus::Pending => Self::Queued,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TransferAvailableActions {
+    pub pause: bool,
+    pub resume: bool,
+    pub cancel: bool,
+    pub delete_artifact: bool,
+}
+
+impl TransferAvailableActions {
+    pub fn from_status_and_support(
+        status: DownloadStatus,
+        support: TransferControlSupport,
+    ) -> Self {
+        Self {
+            pause: matches!(
+                status,
+                DownloadStatus::Pending | DownloadStatus::Downloading
+            ) && support.can_pause,
+            resume: matches!(status, DownloadStatus::Paused) && support.can_resume,
+            cancel: matches!(
+                status,
+                DownloadStatus::Pending | DownloadStatus::Downloading | DownloadStatus::Paused
+            ) && support.can_cancel,
+            delete_artifact: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TransferListRow {
+    pub id: DownloadId,
+    #[allow(dead_code)]
+    // kept app-facing so future provider filters/badges do not need engine access
+    pub provider_kind: SharedString,
+    #[allow(dead_code)]
+    // kept app-facing so future provider-aware surfaces can render source labels directly
+    pub source_label: SharedString,
+    pub filename: SharedString,
+    pub destination: SharedString,
+    pub status: DownloadStatus,
+    pub progress: f32,
+    pub speed_bps: u64,
+    pub display_state: TransferDisplayState,
+    pub available_actions: TransferAvailableActions,
+}
+
+impl TransferListRow {
+    fn from_downloads(downloads: &Downloads, index: usize) -> Self {
+        let status = downloads.statuses[index];
+        let progress = match downloads.total_bytes[index] {
+            Some(total) if total > 0 => downloads.downloaded_bytes[index] as f32 / total as f32,
+            _ => 0.0,
+        };
+
+        Self {
+            id: downloads.ids[index],
+            provider_kind: downloads.provider_kinds[index].clone(),
+            source_label: downloads.source_labels[index].clone(),
+            filename: downloads.filenames[index].clone(),
+            destination: downloads.destinations[index].clone(),
+            status,
+            progress,
+            speed_bps: downloads.speeds[index],
+            display_state: TransferDisplayState::from_status(status),
+            available_actions: TransferAvailableActions::from_status_and_support(
+                status,
+                downloads.control_supports[index],
+            ),
+        }
+    }
+
+    #[allow(dead_code)] // the current Transfers row still prioritizes destination path as its subtitle
+    pub fn source_summary(&self) -> SharedString {
+        source_summary(&self.provider_kind, &self.source_label).into()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct HistoryListRow {
+    pub id: DownloadId,
+    pub provider_kind: SharedString,
+    pub source_label: SharedString,
+    pub filename: SharedString,
+    #[allow(dead_code)] // retained for future history row actions like reveal/copy destination
+    pub destination: SharedString,
+    pub status: DownloadStatus,
+    pub artifact_state: ArtifactState,
+    pub downloaded_bytes: u64,
+    pub total_bytes: Option<u64>,
+    pub added_at: i64,
+    pub finished_at: Option<i64>,
+}
+
+impl HistoryListRow {
+    fn from_history_row(row: &HistoryRow) -> Self {
+        Self {
+            id: row.id,
+            provider_kind: row.provider_kind.clone().into(),
+            source_label: row.source_label.clone().into(),
+            filename: row.filename().to_string().into(),
+            destination: row.destination.clone().into(),
+            status: row.status,
+            artifact_state: row.artifact_state,
+            downloaded_bytes: row.downloaded_bytes,
+            total_bytes: row.total_bytes,
+            added_at: row.added_at,
+            finished_at: row.finished_at,
+        }
+    }
+
+    pub fn source_summary(&self) -> SharedString {
+        source_summary(&self.provider_kind, &self.source_label).into()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct SidebarStorageSummary {
+    pub used_bytes: u64,
+    pub total_bytes: u64,
+    pub fraction: f32,
+}
+
+impl SidebarStorageSummary {
+    fn from_usage(used_bytes: u64, total_bytes: u64) -> Self {
+        Self {
+            used_bytes,
+            total_bytes,
+            fraction: if total_bytes > 0 {
+                (used_bytes as f32 / total_bytes as f32).clamp(0.0, 1.0)
+            } else {
+                0.0
+            },
+        }
+    }
 }
 
 impl Downloads {
@@ -308,6 +465,23 @@ impl Downloads {
         (active, finished, queued)
     }
 
+    pub fn transfer_rows(&self) -> Vec<TransferListRow> {
+        (0..self.len())
+            .map(|index| TransferListRow::from_downloads(self, index))
+            .collect()
+    }
+
+    pub fn history_rows(&self) -> Vec<HistoryListRow> {
+        self.history
+            .iter()
+            .map(HistoryListRow::from_history_row)
+            .collect()
+    }
+
+    pub fn storage_summary(&self) -> SidebarStorageSummary {
+        storage_summary_for_path(&self.settings.download_dir())
+    }
+
     pub fn len(&self) -> usize {
         self.ids.len()
     }
@@ -462,5 +636,129 @@ fn artifact_state_name(state: crate::engine::ArtifactState) -> &'static str {
         crate::engine::ArtifactState::Present => "present",
         crate::engine::ArtifactState::Deleted => "deleted",
         crate::engine::ArtifactState::Missing => "missing",
+    }
+}
+
+fn source_summary(provider_kind: &str, source_label: &str) -> String {
+    if provider_kind == "http" {
+        source_label.to_string()
+    } else {
+        format!("{provider_kind}: {source_label}")
+    }
+}
+
+fn storage_summary_for_path(path: &Path) -> SidebarStorageSummary {
+    let (used_bytes, total_bytes) = query_disk(path);
+    SidebarStorageSummary::from_usage(used_bytes, total_bytes)
+}
+
+fn query_disk(path: &Path) -> (u64, u64) {
+    use std::ffi::CString;
+
+    let Ok(cpath) = CString::new(path.to_string_lossy().as_bytes()) else {
+        return (0, 0);
+    };
+    let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
+    if unsafe { libc::statvfs(cpath.as_ptr(), &mut stat) } != 0 {
+        return (0, 0);
+    }
+    let block = stat.f_frsize as u64;
+    let total = block * stat.f_blocks as u64;
+    let avail = block * stat.f_bavail as u64;
+    (total.saturating_sub(avail), total)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transfer_available_actions_follow_status_and_capabilities() {
+        let support = TransferControlSupport {
+            can_pause: true,
+            can_resume: true,
+            can_cancel: true,
+            can_restore: false,
+        };
+
+        assert_eq!(
+            TransferAvailableActions::from_status_and_support(DownloadStatus::Downloading, support,),
+            TransferAvailableActions {
+                pause: true,
+                resume: false,
+                cancel: true,
+                delete_artifact: true,
+            }
+        );
+
+        assert_eq!(
+            TransferAvailableActions::from_status_and_support(DownloadStatus::Paused, support),
+            TransferAvailableActions {
+                pause: false,
+                resume: true,
+                cancel: true,
+                delete_artifact: true,
+            }
+        );
+
+        assert_eq!(
+            TransferAvailableActions::from_status_and_support(DownloadStatus::Finished, support),
+            TransferAvailableActions {
+                pause: false,
+                resume: false,
+                cancel: false,
+                delete_artifact: true,
+            }
+        );
+    }
+
+    #[test]
+    fn history_row_model_preserves_provider_and_artifact_semantics() {
+        let row = HistoryRow {
+            id: DownloadId(7),
+            provider_kind: "soulseek".into(),
+            source_label: "artist/track.flac".into(),
+            destination: "/tmp/Music/track.flac".into(),
+            status: DownloadStatus::Cancelled,
+            artifact_state: ArtifactState::Missing,
+            total_bytes: Some(1024),
+            downloaded_bytes: 512,
+            added_at: 10,
+            finished_at: Some(20),
+        };
+
+        let model = HistoryListRow::from_history_row(&row);
+
+        assert_eq!(model.id, DownloadId(7));
+        assert_eq!(model.filename.as_ref(), "track.flac");
+        assert_eq!(
+            model.source_summary().as_ref(),
+            "soulseek: artist/track.flac"
+        );
+        assert_eq!(model.artifact_state, ArtifactState::Missing);
+        assert_eq!(model.status, DownloadStatus::Cancelled);
+    }
+
+    #[test]
+    fn sidebar_storage_summary_clamps_fraction() {
+        let empty = SidebarStorageSummary::from_usage(0, 0);
+        assert_eq!(empty.fraction, 0.0);
+
+        let summary = SidebarStorageSummary::from_usage(750, 1000);
+        assert_eq!(summary.used_bytes, 750);
+        assert_eq!(summary.total_bytes, 1000);
+        assert_eq!(summary.fraction, 0.75);
+    }
+
+    #[test]
+    fn source_summary_omits_http_prefix() {
+        assert_eq!(
+            source_summary("http", "https://example.com/file.zip"),
+            "https://example.com/file.zip"
+        );
+        assert_eq!(
+            source_summary("ftp", "ftp://example.com/file.zip"),
+            "ftp: ftp://example.com/file.zip"
+        );
     }
 }

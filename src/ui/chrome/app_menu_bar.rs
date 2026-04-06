@@ -14,8 +14,8 @@
 **************************************************/
 
 use gpui::{
-    Context, Corner, FontWeight, IntoElement, MouseButton, MouseMoveEvent, OwnedMenu,
-    ParentElement, Render, Window, anchored, deferred, div, point, prelude::*, px,
+    Context, Entity, FontWeight, IntoElement, MouseButton, MouseMoveEvent, OwnedMenu,
+    ParentElement, Render, Window, div, prelude::*, px,
 };
 
 use crate::app_menu::{self, OwnedMenuItemLike};
@@ -64,6 +64,8 @@ impl AppMenuBar {
 
 impl Render for AppMenuBar {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let entity = cx.entity();
+
         h_flex()
             .id("app-menu-bar")
             .items_center()
@@ -104,12 +106,7 @@ impl Render for AppMenuBar {
                     );
 
                 let popup = if is_open {
-                    Some(
-                        anchored()
-                            .anchor(Corner::TopLeft)
-                            .offset(point(px(0.0), px(Spacing::CONTROL_GAP)))
-                            .child(deferred(render_menu_popup(index, menu, cx))),
-                    )
+                    Some(render_menu_popup(index, menu, entity.clone(), cx).into_any_element())
                 } else {
                     None
                 };
@@ -122,28 +119,16 @@ impl Render for AppMenuBar {
 fn render_menu_popup(
     index: usize,
     menu: &OwnedMenu,
+    entity: Entity<AppMenuBar>,
     cx: &mut Context<AppMenuBar>,
 ) -> impl IntoElement {
-    div()
-        .id(("menu-popup", index))
-        .occlude()
-        .min_w(px(Chrome::MENU_POPUP_MIN_WIDTH))
-        .p(px(Chrome::MENU_POPUP_PADDING))
-        .rounded(px(Chrome::CARD_RADIUS))
-        .border_1()
-        .border_color(Colors::border())
-        .bg(Colors::card())
-        .shadow_lg()
-        .flex()
-        .flex_col()
-        .gap(px(Chrome::MENU_POPUP_GAP))
-        .on_click(cx.listener(|this, _, _, cx| {
-            this.close_menu(cx);
-        }))
-        .on_mouse_down_out(cx.listener(|this, _, _, cx| {
-            cx.stop_propagation();
-            this.close_menu(cx);
-        }))
+    popup_surface(("menu-popup", index))
+        .min_width(px(Chrome::MENU_POPUP_MIN_WIDTH))
+        .on_close(move |_, app| {
+            let _ = entity.update(app, |this, cx| {
+                this.close_menu(cx);
+            });
+        })
         .children(
             app_menu::owned_menu_items(menu)
                 .enumerate()

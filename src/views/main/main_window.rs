@@ -60,15 +60,9 @@ pub struct MainWindow {
 impl MainWindow {
     pub fn new(cx: &mut Context<Self>) -> Self {
         let menu_bar = cx.new(|cx| AppMenuBar::new(app_menu::build_owned_menus(), cx));
-        let sidebar = cx.new(|_| Sidebar {
-            active_item: 0,
-            collapsed: false,
-            expanded_width: Spacing::SIDEBAR_WIDTH,
-            download_dir: Settings::load().download_dir(),
-        });
-        let sidebar_layout = cx.new(|_| ResizableState::default());
-
         let downloads = cx.new(|cx| Downloads::new(cx));
+        let sidebar = cx.new(|cx| Sidebar::new(downloads.clone(), cx));
+        let sidebar_layout = cx.new(|_| ResizableState::default());
         let download_list = cx.new(|cx| DownloadList::new(downloads.clone(), cx));
         let history_view = cx.new(|cx| HistoryView::new(downloads.clone(), cx));
         let about_visibility = cx.global::<app_actions::AppState>().show_about.clone();
@@ -101,10 +95,6 @@ impl MainWindow {
         });
         self.menu_bar.update(cx, |menu_bar, cx| {
             menu_bar.set_menus(app_menu::build_owned_menus(), cx);
-        });
-        self.sidebar.update(cx, |sidebar, cx| {
-            sidebar.download_dir = settings.download_dir();
-            cx.notify();
         });
         cx.notify();
     }

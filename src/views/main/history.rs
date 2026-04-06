@@ -13,20 +13,16 @@
 **       じしf_,)ノ
 **************************************************/
 
-use std::rc::Rc;
-
 use gpui::{
     App, Context, Entity, Hsla, IntoElement, Render, RenderOnce, SharedString, Window, div,
-    prelude::*, px, transparent_black,
+    prelude::*, px,
 };
 
-use crate::app::Downloads;
-use crate::engine::{ArtifactState, DownloadId, DownloadStatus, HistoryFilter, HistoryRow};
+use crate::app::{Downloads, HistoryListRow};
+use crate::engine::{ArtifactState, DownloadId, DownloadStatus, HistoryFilter};
 use crate::ui::prelude::*;
 
 use rust_i18n::t;
-
-type ClickHandler = Rc<dyn Fn(&mut Window, &mut App)>;
 
 pub struct HistoryView {
     downloads: Entity<Downloads>,
@@ -75,8 +71,8 @@ impl HistoryView {
                 ),
             ],
             rows: downloads
-                .history
-                .iter()
+                .history_rows()
+                .into_iter()
                 .map(HistoryRowModel::from_row)
                 .collect(),
         }
@@ -96,15 +92,20 @@ impl Render for HistoryView {
                     .mb(px(Spacing::SECTION_GAP))
                     .children(view_model.filters.into_iter().map(|filter_model| {
                         let filter = filter_model.filter;
-                        let on_click: ClickHandler = Rc::new({
+                        FilterChip::new(
+                            ("history-filter", filter_model.id),
+                            filter_model.label,
+                            filter_model.active,
+                        )
+                        .on_click({
                             let downloads = downloads.clone();
-                            move |_, cx| {
+                            move |_, _, cx| {
                                 downloads.update(cx, |downloads, cx| {
                                     downloads.set_history_filter(filter, cx);
                                 });
                             }
-                        });
-                        HistoryFilterChip::new(filter_model, on_click)
+                        })
+                        .into_any_element()
                     })),
             )
             .child(if view_model.rows.is_empty() {
@@ -155,7 +156,7 @@ struct HistoryRowModel {
 }
 
 impl HistoryRowModel {
-    fn from_row(row: &HistoryRow) -> Self {
+    fn from_row(row: HistoryListRow) -> Self {
         let (status_icon, status_color) = match row.status {
             DownloadStatus::Finished => (IconName::CircleCheck, Colors::active().into()),
             DownloadStatus::Error => (IconName::CircleX, Colors::error().into()),
@@ -167,59 +168,19 @@ impl HistoryRowModel {
             }
         };
         let (artifact_label, artifact_color) = artifact_state_presentation(row.artifact_state);
+        let subtitle = row.source_summary();
 
         Self {
             id: row.id,
             status_icon,
             status_color,
-            filename: row.filename().to_string().into(),
-            subtitle: format_source_label(row).into(),
+            filename: row.filename,
+            subtitle,
             artifact_label: artifact_label.into(),
             artifact_color,
             size_label: format_bytes(row.total_bytes.unwrap_or(row.downloaded_bytes)).into(),
             age_label: format_age(row.finished_at.unwrap_or(row.added_at)).into(),
         }
-    }
-}
-
-#[derive(IntoElement)]
-struct HistoryFilterChip {
-    model: HistoryFilterChipModel,
-    on_click: ClickHandler,
-}
-
-impl HistoryFilterChip {
-    fn new(model: HistoryFilterChipModel, on_click: ClickHandler) -> Self {
-        Self { model, on_click }
-    }
-}
-
-impl RenderOnce for HistoryFilterChip {
-    fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
-        let on_click = Rc::clone(&self.on_click);
-
-        div()
-            .id(("history-filter", self.model.id))
-            .px(px(12.0))
-            .py(px(6.0))
-            .rounded(px(Chrome::CONTROL_RADIUS))
-            .text_sm()
-            .font_weight(gpui::FontWeight::SEMIBOLD)
-            .cursor_pointer()
-            .bg(if self.model.active {
-                Colors::muted().into()
-            } else {
-                transparent_black()
-            })
-            .text_color(if self.model.active {
-                Colors::foreground()
-            } else {
-                Colors::muted_foreground()
-            })
-            .on_click(move |_, window, cx| {
-                on_click(window, cx);
-            })
-            .child(self.model.label)
     }
 }
 
@@ -327,14 +288,6 @@ fn format_bytes(bytes: u64) -> String {
         format!("{:.0} KB", bytes as f64 / KB as f64)
     } else {
         format!("{bytes} B")
-    }
-}
-
-fn format_source_label(row: &HistoryRow) -> String {
-    if row.provider_kind == "http" {
-        row.source_label.clone()
-    } else {
-        format!("{}: {}", row.provider_kind, row.source_label)
     }
 }
 

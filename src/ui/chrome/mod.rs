@@ -15,4 +15,5 @@
 
 pub mod app_menu_bar;
 pub mod modal;
+pub mod popup_surface;
 pub mod window_header;

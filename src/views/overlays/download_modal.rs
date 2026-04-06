@@ -44,14 +44,10 @@ impl EventEmitter<DownloadCancelled> for DownloadModal {}
 
 impl DownloadModal {
     pub fn new(settings: Settings, cx: &mut Context<Self>) -> Self {
-        let url = Self::clipboard_url(cx).unwrap_or_default();
-        let destination = if url.is_empty() {
-            String::new()
-        } else {
-            Self::destination_for(&url, &settings)
-                .to_string_lossy()
-                .to_string()
-        };
+        let url = Self::clipboard_source(&settings, cx).unwrap_or_default();
+        let destination = Self::preview_destination_for(&url, &settings)
+            .map(|destination| destination.to_string_lossy().to_string())
+            .unwrap_or_default();
 
         let url_input = cx.new(|cx| {
             TextField::new(
@@ -78,13 +74,9 @@ impl DownloadModal {
 
                 let next_destination = {
                     let url = this.url_input.read(cx).text().trim().to_string();
-                    if url.is_empty() {
-                        String::new()
-                    } else {
-                        Self::destination_for(&url, &this.settings)
-                            .to_string_lossy()
-                            .to_string()
-                    }
+                    Self::preview_destination_for(&url, &this.settings)
+                        .map(|destination| destination.to_string_lossy().to_string())
+                        .unwrap_or_default()
                 };
 
                 this.destination_input.update(cx, |input, cx| {
@@ -100,13 +92,9 @@ impl DownloadModal {
             |this: &mut Self, _, event: &TextFieldChanged, cx| {
                 let auto_destination = {
                     let url = this.url_input.read(cx).text().trim().to_string();
-                    if url.is_empty() {
-                        String::new()
-                    } else {
-                        Self::destination_for(&url, &this.settings)
-                            .to_string_lossy()
-                            .to_string()
-                    }
+                    Self::preview_destination_for(&url, &this.settings)
+                        .map(|destination| destination.to_string_lossy().to_string())
+                        .unwrap_or_default()
                 };
 
                 this.destination_edited = event.text.as_ref() != auto_destination;
@@ -139,28 +127,27 @@ impl DownloadModal {
         }
     }
 
-    fn clipboard_url(cx: &mut Context<Self>) -> Option<String> {
+    fn clipboard_source(settings: &Settings, cx: &mut Context<Self>) -> Option<String> {
         cx.read_from_clipboard()
             .and_then(|item| item.text())
             .map(|text| text.trim().to_string())
-            .filter(|text| Self::is_valid_url(text))
+            .filter(|text| Self::preview_destination_for(text, settings).is_some())
     }
 
     fn paste_from_clipboard(&mut self, cx: &mut Context<Self>) {
-        if let Some(url) = Self::clipboard_url(cx) {
+        if let Some(url) = Self::clipboard_source(&self.settings, cx) {
             self.url_input
                 .update(cx, |input, cx| input.set_text(url, cx));
         }
         cx.notify();
     }
 
-    fn destination_for(url: &str, settings: &Settings) -> PathBuf {
-        AddDownloadRequest::from_url(url.to_string()).preview_destination(settings)
-    }
-
-    fn is_valid_url(url: &str) -> bool {
+    fn preview_destination_for(url: &str, settings: &Settings) -> Option<PathBuf> {
         let url = url.trim();
-        url.starts_with("http://") || url.starts_with("https://")
+        if url.is_empty() {
+            return None;
+        }
+        Some(AddDownloadRequest::from_url(url.to_string()).preview_destination(settings))
     }
 
     fn form_values(&self, cx: &mut Context<Self>) -> (String, String) {
@@ -172,12 +159,12 @@ impl DownloadModal {
 
     fn can_confirm(&self, cx: &mut Context<Self>) -> bool {
         let (url, destination) = self.form_values(cx);
-        Self::is_valid_url(&url) && !destination.is_empty()
+        !url.is_empty() && !destination.is_empty()
     }
 
     fn confirm_if_valid(&mut self, cx: &mut Context<Self>) {
         let (url, destination) = self.form_values(cx);
-        if Self::is_valid_url(&url) && !destination.is_empty() {
+        if !url.is_empty() && !destination.is_empty() {
             cx.emit(DownloadConfirmed {
                 url,
                 destination: PathBuf::from(destination),
@@ -301,24 +288,16 @@ impl Render for DownloadModal {
                                     .gap(px(Spacing::LIST_GAP))
                                     .child(div().flex_1().child(self.url_input.clone()))
                                     .child(
-                                        div()
-                                            .id("paste-btn")
-                                            .flex()
-                                            .items_center()
-                                            .px(px(12.0))
-                                            .py(px(10.0))
-                                            .rounded(px(Chrome::BUTTON_RADIUS))
-                                            .border_1()
-                                            .border_color(Colors::border())
-                                            .bg(Colors::background())
-                                            .text_sm()
-                                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                                            .text_color(Colors::foreground())
-                                            .cursor_pointer()
-                                            .on_click(cx.listener(|this, _, _, cx| {
+                                        Button::new(
+                                            "paste-btn",
+                                            t!("download_modal.paste").to_string(),
+                                        )
+                                        .compact()
+                                        .on_click(
+                                            cx.listener(|this, _, _, cx| {
                                                 this.paste_from_clipboard(cx);
-                                            }))
-                                            .child(t!("download_modal.paste").to_string()),
+                                            }),
+                                        ),
                                     ),
                             ),
                     )
@@ -342,43 +321,23 @@ impl Render for DownloadModal {
                             .justify_end()
                             .gap(px(Spacing::CONTROL_GAP))
                             .child(
-                                div()
-                                    .id("cancel-btn")
-                                    .px(px(18.0))
-                                    .py(px(10.0))
-                                    .rounded(px(Chrome::BUTTON_RADIUS))
-                                    .border_1()
-                                    .border_color(Colors::border())
-                                    .text_sm()
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .text_color(Colors::foreground())
-                                    .cursor_pointer()
+                                Button::new("cancel-btn", t!("download_modal.cancel").to_string())
                                     .on_click(cx.listener(|_, _, _, cx| {
                                         cx.emit(DownloadCancelled);
-                                    }))
-                                    .child(t!("download_modal.cancel").to_string()),
+                                    })),
                             )
                             .child(
-                                div()
-                                    .id("confirm-btn")
-                                    .px(px(18.0))
-                                    .py(px(10.0))
-                                    .rounded(px(Chrome::BUTTON_RADIUS))
-                                    .bg(if can_confirm {
-                                        Colors::active()
-                                    } else {
-                                        Colors::muted()
-                                    })
-                                    .text_sm()
-                                    .font_weight(gpui::FontWeight::BOLD)
-                                    .text_color(Colors::background())
-                                    .cursor_pointer()
-                                    .when(can_confirm, |el| {
-                                        el.on_click(cx.listener(|this, _, _, cx| {
-                                            this.confirm_if_valid(cx);
-                                        }))
-                                    })
-                                    .child(t!("download_modal.confirm").to_string()),
+                                Button::new(
+                                    "confirm-btn",
+                                    t!("download_modal.confirm").to_string(),
+                                )
+                                .primary()
+                                .disabled(!can_confirm)
+                                .on_click(cx.listener(
+                                    |this, _, _, cx| {
+                                        this.confirm_if_valid(cx);
+                                    },
+                                )),
                             ),
                     ),
             )
