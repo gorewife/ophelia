@@ -13,10 +13,7 @@
 **       じしf_,)ノ
 **************************************************/
 
-use gpui::{
-    Context, Corner, IntoElement, ParentElement, Styled, anchored, deferred, div, point,
-    prelude::*, px,
-};
+use gpui::{Context, IntoElement, ParentElement, Styled, div, prelude::*, px};
 
 use crate::settings::suggested_destination_rule_icon_name;
 use crate::ui::prelude::*;
@@ -63,12 +60,7 @@ pub(super) fn render(
         .child(file_type_icon_sm(preview_icon_name, Colors::foreground()));
 
     let popup = if is_open {
-        Some(
-            anchored()
-                .anchor(Corner::TopLeft)
-                .offset(point(px(0.0), px(Spacing::CONTROL_GAP)))
-                .child(deferred(render_popup(index, rule, cx))),
-        )
+        Some(render_popup(index, rule, cx).into_any_element())
     } else {
         None
     };
@@ -83,23 +75,15 @@ fn render_popup(
 ) -> impl IntoElement {
     let selected_icon_name = rule.icon_name.as_deref();
     let auto_preview_icon_name = auto_rule_icon_name(rule, cx).to_string();
+    let entity = cx.entity();
 
-    div()
-        .id(format!("destination-rule-icon-popup-{index}"))
-        .occlude()
-        .w(px(Chrome::SETTINGS_ICON_PICKER_WIDTH))
-        .p(px(Chrome::SETTINGS_ICON_PICKER_PADDING))
-        .rounded(px(Chrome::PANEL_RADIUS))
-        .border_1()
-        .border_color(Colors::border())
-        .bg(Colors::card())
-        .shadow_lg()
-        .flex()
-        .flex_col()
-        .gap(px(Spacing::SETTINGS_PANEL_GAP))
-        .on_mouse_down_out(cx.listener(|this, _, _, cx| {
-            this.close_destination_rule_icon_picker(cx);
-        }))
+    popup_surface(format!("destination-rule-icon-popup-{index}"))
+        .width(px(Chrome::SETTINGS_ICON_PICKER_WIDTH))
+        .on_close(move |_, app| {
+            let _ = entity.update(app, |this, cx| {
+                this.close_destination_rule_icon_picker(cx);
+            });
+        })
         .child(
             div()
                 .flex()

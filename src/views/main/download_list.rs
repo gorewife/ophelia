@@ -13,21 +13,17 @@
 **       じしf_,)ノ
 **************************************************/
 
-use std::rc::Rc;
-
 use gpui::{
     App, Context, Entity, IntoElement, Render, RenderOnce, SharedString, Window, div, prelude::*,
-    px, transparent_black,
+    px,
 };
 
 use crate::app::Downloads;
 use crate::engine::DownloadStatus;
 use crate::ui::prelude::*;
-use crate::views::main::download_row::{DownloadRow, DownloadState};
+use crate::views::main::download_row::DownloadRow;
 
 use rust_i18n::t;
-
-type ClickHandler = Rc<dyn Fn(&mut Window, &mut App)>;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum TransferFilter {
@@ -104,55 +100,46 @@ impl DownloadList {
             ),
         ];
 
-        let rows = (0..downloads.len())
-            .filter(|&i| self.filter.matches(downloads.statuses[i]))
-            .map(|i| {
-                let id = downloads.ids[i];
-                let progress = match downloads.total_bytes[i] {
-                    Some(total) if total > 0 => downloads.downloaded_bytes[i] as f32 / total as f32,
-                    _ => 0.0,
-                };
-                let state = match downloads.statuses[i] {
-                    DownloadStatus::Downloading => DownloadState::Active,
-                    DownloadStatus::Paused => DownloadState::Paused,
-                    DownloadStatus::Finished => DownloadState::Finished,
-                    DownloadStatus::Error | DownloadStatus::Cancelled => DownloadState::Error,
-                    DownloadStatus::Pending => DownloadState::Queued,
-                };
-
+        let rows = downloads
+            .transfer_rows()
+            .into_iter()
+            .filter(|row| self.filter.matches(row.status))
+            .map(|row| {
+                let id = row.id;
                 let on_pause_resume: Option<Box<dyn Fn(&mut Window, &mut App) + 'static>> =
-                    match state {
-                        DownloadState::Active | DownloadState::Queued => {
-                            let entity = entity.clone();
-                            Some(Box::new(move |_, cx| {
-                                entity.update(cx, |downloads, cx| downloads.pause(id, cx));
-                            }))
-                        }
-                        DownloadState::Paused => {
-                            let entity = entity.clone();
-                            Some(Box::new(move |_, cx| {
-                                entity.update(cx, |downloads, cx| downloads.resume(id, cx));
-                            }))
-                        }
-                        DownloadState::Finished | DownloadState::Error => None,
+                    if row.available_actions.pause {
+                        let entity = entity.clone();
+                        Some(Box::new(move |_window: &mut Window, app: &mut App| {
+                            entity.update(app, |downloads, cx| downloads.pause(id, cx));
+                        }))
+                    } else if row.available_actions.resume {
+                        let entity = entity.clone();
+                        Some(Box::new(move |_window: &mut Window, app: &mut App| {
+                            entity.update(app, |downloads, cx| downloads.resume(id, cx));
+                        }))
+                    } else {
+                        None
                     };
 
-                let on_remove: Box<dyn Fn(&mut Window, &mut App) + 'static> = {
+                let on_remove = if row.available_actions.delete_artifact {
                     let entity = entity.clone();
-                    Box::new(move |_, cx| {
-                        entity.update(cx, |downloads, cx| downloads.remove(id, cx));
+                    Some(Box::new(move |_window: &mut Window, app: &mut App| {
+                        entity.update(app, |downloads, cx| downloads.remove(id, cx));
                     })
+                        as Box<dyn Fn(&mut Window, &mut App) + 'static>)
+                } else {
+                    None
                 };
 
                 DownloadRow {
                     id,
-                    filename: downloads.filenames[i].clone(),
-                    destination: downloads.destinations[i].clone(),
-                    progress,
-                    speed: format_speed(downloads.speeds[i]).into(),
-                    state,
+                    filename: row.filename,
+                    destination: row.destination,
+                    progress: row.progress,
+                    speed: format_speed(row.speed_bps).into(),
+                    state: row.display_state,
                     on_pause_resume,
-                    on_remove: Some(on_remove),
+                    on_remove,
                 }
             })
             .collect();
@@ -183,16 +170,21 @@ impl Render for DownloadList {
                     .mb(px(Spacing::SECTION_GAP))
                     .children(view_model.filters.into_iter().map(|filter_model| {
                         let filter = filter_model.filter;
-                        let on_click: ClickHandler = Rc::new({
+                        FilterChip::new(
+                            ("transfer-filter", filter_model.id),
+                            filter_model.label,
+                            filter_model.active,
+                        )
+                        .on_click({
                             let weak = weak.clone();
-                            move |_, cx| {
+                            move |_, _, cx| {
                                 let _ = weak.update(cx, |this, cx| {
                                     this.filter = filter;
                                     cx.notify();
                                 });
                             }
-                        });
-                        TransferFilterChip::new(filter_model, on_click)
+                        })
+                        .into_any_element()
                     })),
             )
             .child(if view_model.rows.is_empty() {
@@ -232,47 +224,6 @@ impl TransferFilterChipModel {
             label: label.into(),
             active,
         }
-    }
-}
-
-#[derive(IntoElement)]
-struct TransferFilterChip {
-    model: TransferFilterChipModel,
-    on_click: ClickHandler,
-}
-
-impl TransferFilterChip {
-    fn new(model: TransferFilterChipModel, on_click: ClickHandler) -> Self {
-        Self { model, on_click }
-    }
-}
-
-impl RenderOnce for TransferFilterChip {
-    fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
-        let on_click = Rc::clone(&self.on_click);
-
-        div()
-            .id(("transfer-filter", self.model.id))
-            .px(px(12.0))
-            .py(px(6.0))
-            .rounded(px(Chrome::CONTROL_RADIUS))
-            .text_sm()
-            .font_weight(gpui::FontWeight::SEMIBOLD)
-            .cursor_pointer()
-            .bg(if self.model.active {
-                Colors::muted().into()
-            } else {
-                transparent_black()
-            })
-            .text_color(if self.model.active {
-                Colors::foreground()
-            } else {
-                Colors::muted_foreground()
-            })
-            .on_click(move |_, window, cx| {
-                on_click(window, cx);
-            })
-            .child(self.model.label)
     }
 }
 

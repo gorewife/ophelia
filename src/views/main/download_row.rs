@@ -15,19 +15,11 @@
 
 use gpui::{App, ElementId, Hsla, SharedString, Window, div, prelude::*, px, relative};
 
+use crate::app::TransferDisplayState;
 use crate::engine::DownloadId;
 use crate::ui::prelude::*;
 
-#[derive(Clone, Copy)]
-pub enum DownloadState {
-    Active,
-    Paused,
-    Queued,
-    Finished,
-    Error,
-}
-
-impl DownloadState {
+impl TransferDisplayState {
     fn color(self) -> Hsla {
         match self {
             Self::Active => Colors::active().into(),
@@ -73,7 +65,7 @@ pub struct DownloadRow {
     pub destination: SharedString,
     pub progress: f32,
     pub speed: SharedString,
-    pub state: DownloadState,
+    pub state: TransferDisplayState,
     pub on_pause_resume: Option<Box<dyn Fn(&mut Window, &mut App) + 'static>>,
     pub on_remove: Option<Box<dyn Fn(&mut Window, &mut App) + 'static>>,
 }
@@ -155,7 +147,7 @@ impl RenderOnce for DownloadRowDetails {
 #[derive(IntoElement)]
 struct DownloadRowActions {
     id: DownloadId,
-    state: DownloadState,
+    state: TransferDisplayState,
     speed: SharedString,
     on_pause_resume: Option<Box<dyn Fn(&mut Window, &mut App) + 'static>>,
     on_remove: Option<Box<dyn Fn(&mut Window, &mut App) + 'static>>,
@@ -164,7 +156,7 @@ struct DownloadRowActions {
 impl DownloadRowActions {
     fn new(
         id: DownloadId,
-        state: DownloadState,
+        state: TransferDisplayState,
         speed: SharedString,
         on_pause_resume: Option<Box<dyn Fn(&mut Window, &mut App) + 'static>>,
         on_remove: Option<Box<dyn Fn(&mut Window, &mut App) + 'static>>,

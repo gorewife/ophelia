@@ -19,8 +19,8 @@
 //! settings-oriented dropdown without depending on the full component library.
 
 use gpui::{
-    Context, Corner, ElementId, Entity, IntoElement, ParentElement, Render, SharedString, Styled,
-    Window, anchored, deferred, div, point, prelude::*, px,
+    Context, ElementId, Entity, IntoElement, ParentElement, Render, SharedString, Styled, Window,
+    div, prelude::*, px,
 };
 
 use crate::ui::prelude::*;
@@ -154,15 +154,13 @@ impl Render for DropdownSelect {
 
         let popup = if self.open {
             Some(
-                anchored()
-                    .anchor(Corner::TopLeft)
-                    .offset(point(px(0.0), px(Spacing::CONTROL_GAP)))
-                    .child(deferred(render_popup(
-                        cx.entity(),
-                        self.options.clone(),
-                        self.selected_value.clone(),
-                        cx,
-                    ))),
+                render_popup(
+                    cx.entity(),
+                    self.options.clone(),
+                    self.selected_value.clone(),
+                    cx,
+                )
+                .into_any_element(),
             )
         } else {
             None
@@ -176,25 +174,18 @@ fn render_popup(
     entity: Entity<DropdownSelect>,
     options: Vec<DropdownOption>,
     selected_value: SharedString,
-    cx: &mut Context<DropdownSelect>,
+    _cx: &mut Context<DropdownSelect>,
 ) -> impl IntoElement {
-    div()
-        .id("dropdown-select-popup")
-        .occlude()
-        .w_full()
-        .min_w(px(220.0))
-        .p(px(Chrome::MENU_POPUP_PADDING))
-        .rounded(px(Chrome::CARD_RADIUS))
-        .border_1()
-        .border_color(Colors::border())
-        .bg(Colors::card())
-        .shadow_lg()
-        .flex()
-        .flex_col()
-        .gap(px(Chrome::MENU_POPUP_GAP))
-        .on_mouse_down_out(cx.listener(|this, _, _, cx| {
-            this.close(cx);
-        }))
+    let close_entity = entity.clone();
+
+    popup_surface("dropdown-select-popup")
+        .match_trigger_width()
+        .min_width(px(220.0))
+        .on_close(move |_, app| {
+            let _ = close_entity.update(app, |this, cx| {
+                this.close(cx);
+            });
+        })
         .children(options.into_iter().enumerate().map(|(index, option)| {
             let is_selected = option.value == selected_value;
             let entity = entity.clone();

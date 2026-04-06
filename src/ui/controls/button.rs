@@ -27,11 +27,20 @@ use gpui::{
 
 use crate::ui::prelude::*;
 
+#[derive(Clone, Copy)]
+pub enum ButtonVariant {
+    Secondary,
+    Primary,
+}
+
 #[derive(IntoElement)]
 pub struct Button {
     id: ElementId,
     label: SharedString,
     compact: bool,
+    icon: Option<IconName>,
+    variant: ButtonVariant,
+    disabled: bool,
     on_click: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>>,
 }
 
@@ -41,12 +50,30 @@ impl Button {
             id: id.into(),
             label: label.into(),
             compact: false,
+            icon: None,
+            variant: ButtonVariant::Secondary,
+            disabled: false,
             on_click: None,
         }
     }
 
     pub fn compact(mut self) -> Self {
         self.compact = true;
+        self
+    }
+
+    pub fn primary(mut self) -> Self {
+        self.variant = ButtonVariant::Primary;
+        self
+    }
+
+    pub fn icon(mut self, icon: IconName) -> Self {
+        self.icon = Some(icon);
+        self
+    }
+
+    pub fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
         self
     }
 
@@ -61,12 +88,36 @@ impl Button {
 
 impl RenderOnce for Button {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
+        let (bg, border_color, text_color) = match (self.variant, self.disabled) {
+            (ButtonVariant::Primary, false) => (
+                Colors::active(),
+                gpui::rgba(0x00000000),
+                Colors::background(),
+            ),
+            (ButtonVariant::Primary, true) => (
+                Colors::muted(),
+                gpui::rgba(0x00000000),
+                Colors::muted_foreground(),
+            ),
+            (ButtonVariant::Secondary, false) => (
+                Colors::muted(),
+                Colors::input_border(),
+                Colors::foreground(),
+            ),
+            (ButtonVariant::Secondary, true) => (
+                Colors::muted(),
+                Colors::input_border(),
+                Colors::muted_foreground(),
+            ),
+        };
+
         div()
             .id(self.id)
             .flex()
             .flex_shrink_0()
             .items_center()
             .justify_center()
+            .gap(px(Spacing::SETTINGS_INLINE_GAP))
             .h(px(Chrome::BUTTON_HEIGHT))
             .px(px(if self.compact {
                 Chrome::BUTTON_COMPACT_PADDING_X
@@ -75,17 +126,25 @@ impl RenderOnce for Button {
             }))
             .rounded(px(Chrome::BUTTON_RADIUS))
             .border_1()
-            .border_color(Colors::input_border())
-            .bg(Colors::muted())
+            .border_color(border_color)
+            .bg(bg)
             .text_sm()
             .font_weight(gpui::FontWeight::SEMIBOLD)
-            .text_color(Colors::foreground())
-            .cursor_pointer()
-            .hover(|style| style.bg(Colors::card_hover()))
-            .active(|style| style.bg(Colors::card()))
-            .child(self.label)
-            .when_some(self.on_click, |this, on_click| {
-                this.on_click(move |event, window, cx| on_click(event, window, cx))
+            .text_color(text_color)
+            .when(!self.disabled, |this| {
+                this.cursor_pointer()
+                    .hover(|style| style.bg(Colors::card_hover()))
+                    .active(|style| style.bg(Colors::card()))
             })
+            .when_some(self.icon, |this, icon| {
+                this.child(icon_sm(icon, text_color))
+            })
+            .child(div().child(self.label))
+            .when_some(
+                self.on_click.filter(|_| !self.disabled),
+                |this, on_click| {
+                    this.on_click(move |event, window, cx| on_click(event, window, cx))
+                },
+            )
     }
 }
