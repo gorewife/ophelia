@@ -30,7 +30,8 @@ use crate::engine::destination::{
 };
 use crate::engine::http::HttpDownloadConfig;
 use crate::engine::types::{
-    DownloadId, PersistedDownloadSource, ProviderResumeData, SavedDownload, TransferControlSupport,
+    DownloadId, PersistedDownloadSource, ProviderResumeData, SavedDownload, TransferChunkMapState,
+    TransferControlSupport,
 };
 use crate::settings::Settings;
 
@@ -182,6 +183,10 @@ impl DownloadSpec {
     pub fn control_support(&self) -> TransferControlSupport {
         self.source.control_support()
     }
+
+    pub fn active_chunk_map_state(&self) -> TransferChunkMapState {
+        self.source.active_chunk_map_state()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -214,6 +219,12 @@ impl DownloadSource {
     pub fn control_support(&self) -> TransferControlSupport {
         match self {
             Self::Http { .. } => TransferControlSupport::all(),
+        }
+    }
+
+    pub fn active_chunk_map_state(&self) -> TransferChunkMapState {
+        match self {
+            Self::Http { .. } => TransferChunkMapState::Loading,
         }
     }
 }

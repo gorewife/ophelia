@@ -50,6 +50,7 @@ use crate::engine::types::{
     TransferControlSupport,
 };
 
+use super::chunk_map::spawn_chunk_map_reporter;
 use super::error::{ChunkError, ChunkOutcome};
 use super::health::{activation_now, spawn_health_monitor};
 use super::probe::probe;
@@ -94,6 +95,7 @@ struct ResolvedChunks {
     part_path: PathBuf,
     destination: PathBuf,
     finalize_strategy: FinalizeStrategy,
+    chunk_map_supported: bool,
 }
 
 async fn resolve_chunks(
@@ -159,6 +161,7 @@ async fn resolve_chunks(
                 part_path,
                 destination,
                 finalize_strategy: destination_policy.finalize_strategy(),
+                chunk_map_supported: true,
             })
         }
         None => {
@@ -210,6 +213,10 @@ async fn resolve_chunks(
                         id,
                         support: single_stream_control_support(),
                     });
+                    let _ = runtime_update_tx.send(TaskRuntimeUpdate::ChunkMapStateChanged {
+                        id,
+                        state: crate::engine::TransferChunkMapState::Unsupported,
+                    });
                     return Err(single_download(
                         id,
                         Arc::clone(chunk_client),
@@ -259,6 +266,12 @@ async fn resolve_chunks(
 
             tracing::info!(total_bytes, num_chunks, "starting chunked download");
             let chunks = chunk::split(total_bytes, num_chunks);
+            if !probe_result.accepts_ranges {
+                let _ = runtime_update_tx.send(TaskRuntimeUpdate::ChunkMapStateChanged {
+                    id,
+                    state: crate::engine::TransferChunkMapState::Unsupported,
+                });
+            }
             Ok(ResolvedChunks {
                 total_bytes,
                 chunks,
@@ -266,6 +279,7 @@ async fn resolve_chunks(
                 part_path,
                 destination,
                 finalize_strategy,
+                chunk_map_supported: probe_result.accepts_ranges,
             })
         }
     }
@@ -587,6 +601,7 @@ pub async fn download_task(
         part_path,
         destination,
         finalize_strategy,
+        chunk_map_supported,
     } = resolved;
 
     let file = Arc::new(file);
@@ -664,6 +679,17 @@ pub async fn download_task(
         progress_interval_ms,
         progress_tx.clone(),
     );
+    let chunk_map_handle = chunk_map_supported.then(|| {
+        spawn_chunk_map_reporter(
+            id,
+            Arc::clone(&slots.starts),
+            Arc::clone(&slots.ends),
+            Arc::clone(&slots.downloaded),
+            Arc::clone(&slots.next_slot),
+            total_bytes,
+            runtime_update_tx.clone(),
+        )
+    });
 
     let health_handle = spawn_health_monitor(
         Arc::clone(&slots.downloaded),
@@ -784,6 +810,9 @@ pub async fn download_task(
     }
 
     progress_handle.abort();
+    if let Some(handle) = chunk_map_handle {
+        handle.abort();
+    }
     health_handle.abort();
     drop(file); // close before rename on Windows
 

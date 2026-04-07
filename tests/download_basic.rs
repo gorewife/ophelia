@@ -30,7 +30,8 @@ use wiremock::{Mock, MockServer, Respond, ResponseTemplate};
 
 use ophelia::engine::http::{HttpDownloadConfig, download_task};
 use ophelia::engine::types::{
-    DownloadId, DownloadStatus, TaskRuntimeUpdate, TransferControlSupport,
+    ChunkMapCellState, DownloadId, DownloadStatus, TaskRuntimeUpdate, TransferChunkMapState,
+    TransferControlSupport,
 };
 
 struct RangeDispositionResponder {
@@ -131,6 +132,73 @@ async fn parallel_download_with_range_support() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn chunked_http_emits_chunk_map_snapshot() {
+    let data = test_data(10_000);
+
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/file.bin"))
+        .respond_with(RangeResponder { data: data.clone() })
+        .mount(&server)
+        .await;
+
+    let url = format!("{}/file.bin", server.uri());
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("file.bin");
+
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let (runtime_tx, mut runtime_rx) = runtime_updates_channel();
+    download_task(
+        DownloadId(0),
+        url,
+        dest,
+        exact_destination_policy(&dir.path().join("file.bin")),
+        HttpDownloadConfig {
+            speed_limit_bps: 20_000,
+            write_buffer_size: 1024,
+            ..HttpDownloadConfig::default()
+        },
+        tx,
+        CancellationToken::new(),
+        Arc::new(Mutex::new(None)),
+        Arc::new(Mutex::new(None)),
+        None,
+        unlimited_semaphore(),
+        unlimited_throttle(),
+        runtime_tx,
+    )
+    .await;
+
+    match wait_for_runtime_update(&mut runtime_rx, |update| {
+        matches!(
+            update,
+            TaskRuntimeUpdate::ChunkMapStateChanged {
+                state: TransferChunkMapState::Http(_),
+                ..
+            }
+        )
+    })
+    .await
+    {
+        TaskRuntimeUpdate::ChunkMapStateChanged {
+            state: TransferChunkMapState::Http(snapshot),
+            ..
+        } => {
+            assert_eq!(snapshot.cells.len(), 128);
+            assert!(snapshot.cells.iter().all(|&cell| {
+                matches!(
+                    cell,
+                    ChunkMapCellState::Empty
+                        | ChunkMapCellState::Partial
+                        | ChunkMapCellState::Complete
+                )
+            }));
+        }
+        other => panic!("expected http chunk-map snapshot, got {other:?}"),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn single_stream_fallback_no_range_support() {
     let data = test_data(5_000);
     let expected_hash = sha256(&data);
@@ -170,6 +238,59 @@ async fn single_stream_fallback_no_range_support() {
 
     let downloaded = std::fs::read(&dest).unwrap();
     assert_eq!(sha256(&downloaded), expected_hash);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn no_range_http_emits_unsupported_chunk_map_state() {
+    let data = test_data(5_000);
+
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/file.bin"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(data))
+        .mount(&server)
+        .await;
+
+    let url = format!("{}/file.bin", server.uri());
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("file.bin");
+
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let (runtime_tx, mut runtime_rx) = runtime_updates_channel();
+    download_task(
+        DownloadId(0),
+        url,
+        dest,
+        exact_destination_policy(&dir.path().join("file.bin")),
+        HttpDownloadConfig::default(),
+        tx,
+        CancellationToken::new(),
+        Arc::new(Mutex::new(None)),
+        Arc::new(Mutex::new(None)),
+        None,
+        unlimited_semaphore(),
+        unlimited_throttle(),
+        runtime_tx,
+    )
+    .await;
+
+    match wait_for_runtime_update(&mut runtime_rx, |update| {
+        matches!(
+            update,
+            TaskRuntimeUpdate::ChunkMapStateChanged {
+                state: TransferChunkMapState::Unsupported,
+                ..
+            }
+        )
+    })
+    .await
+    {
+        TaskRuntimeUpdate::ChunkMapStateChanged {
+            state: TransferChunkMapState::Unsupported,
+            ..
+        } => {}
+        other => panic!("expected unsupported chunk-map state, got {other:?}"),
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -254,6 +375,52 @@ async fn no_content_length_fallback_emits_narrowed_runtime_control_support() {
         saw_support_change,
         "expected runtime control-support narrowing"
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn no_content_length_fallback_emits_unsupported_chunk_map_state() {
+    let data = test_data(2_000);
+    let server = spawn_no_content_length_server(data).await;
+    let url = format!("http://{server}/file.bin");
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("file.bin");
+
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let (runtime_tx, mut runtime_rx) = runtime_updates_channel();
+    download_task(
+        DownloadId(0),
+        url,
+        dest,
+        exact_destination_policy(&dir.path().join("file.bin")),
+        HttpDownloadConfig::default(),
+        tx,
+        CancellationToken::new(),
+        Arc::new(Mutex::new(None)),
+        Arc::new(Mutex::new(None)),
+        None,
+        unlimited_semaphore(),
+        unlimited_throttle(),
+        runtime_tx,
+    )
+    .await;
+
+    match wait_for_runtime_update(&mut runtime_rx, |update| {
+        matches!(
+            update,
+            TaskRuntimeUpdate::ChunkMapStateChanged {
+                state: TransferChunkMapState::Unsupported,
+                ..
+            }
+        )
+    })
+    .await
+    {
+        TaskRuntimeUpdate::ChunkMapStateChanged {
+            state: TransferChunkMapState::Unsupported,
+            ..
+        } => {}
+        other => panic!("expected unsupported chunk-map state, got {other:?}"),
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]

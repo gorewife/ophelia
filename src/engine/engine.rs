@@ -51,7 +51,7 @@ use crate::engine::provider::{
 use crate::engine::{
     ArtifactState, DbEvent, DownloadControlAction, DownloadId, DownloadSpec, DownloadStatus,
     EngineNotification, LiveTransferRemovalAction, ProgressUpdate, ProviderResumeData,
-    RestoredDownload, TaskRuntimeUpdate, TransferControlSupport,
+    RestoredDownload, TaskRuntimeUpdate, TransferChunkMapState, TransferControlSupport,
 };
 use crate::settings::Settings;
 
@@ -363,6 +363,16 @@ impl EngineActor {
                 spec,
             },
         );
+        let _ = self
+            .notification_tx
+            .send(EngineNotification::ChunkMapStateChanged {
+                id,
+                state: self
+                    .tasks
+                    .get(&id)
+                    .map(|entry| entry.spec.active_chunk_map_state())
+                    .unwrap_or(TransferChunkMapState::Unsupported),
+            });
     }
 
     /// Pop queued tasks and spawn them until we hit max_concurrent or the queue is empty.
@@ -430,6 +440,12 @@ impl EngineActor {
                     downloaded_bytes,
                     resume_data: Some(resume_data.clone()),
                 });
+                let _ = self
+                    .notification_tx
+                    .send(EngineNotification::ChunkMapStateChanged {
+                        id,
+                        state: TransferChunkMapState::Unsupported,
+                    });
                 self.paused.insert(
                     id,
                     PausedTask {
@@ -447,6 +463,12 @@ impl EngineActor {
                 downloaded_bytes: 0,
                 resume_data: None,
             });
+            let _ = self
+                .notification_tx
+                .send(EngineNotification::ChunkMapStateChanged {
+                    id,
+                    state: TransferChunkMapState::Unsupported,
+                });
             let _ = self.notification_tx.send(self.status_notification(
                 id,
                 DownloadStatus::Paused,
@@ -532,6 +554,12 @@ impl EngineActor {
                 .send(DbEvent::ArtifactStateChanged { id, artifact_state });
             let _ = self
                 .notification_tx
+                .send(EngineNotification::ChunkMapStateChanged {
+                    id,
+                    state: TransferChunkMapState::Unsupported,
+                });
+            let _ = self
+                .notification_tx
                 .send(EngineNotification::LiveTransferRemoved {
                     id,
                     action: LiveTransferRemovalAction::Cancelled,
@@ -566,6 +594,12 @@ impl EngineActor {
             .send(DbEvent::ArtifactStateChanged { id, artifact_state });
         let _ = self
             .notification_tx
+            .send(EngineNotification::ChunkMapStateChanged {
+                id,
+                state: TransferChunkMapState::Unsupported,
+            });
+        let _ = self
+            .notification_tx
             .send(EngineNotification::LiveTransferRemoved {
                 id,
                 action: LiveTransferRemovalAction::DeleteArtifact,
@@ -598,6 +632,12 @@ impl EngineActor {
 
         match done.final_state.status {
             DownloadStatus::Finished => {
+                let _ = self
+                    .notification_tx
+                    .send(EngineNotification::ChunkMapStateChanged {
+                        id: done.id,
+                        state: TransferChunkMapState::Unsupported,
+                    });
                 let _ = self.db_tx.send(DbEvent::Finished {
                     id: done.id,
                     total_bytes: done
@@ -608,6 +648,12 @@ impl EngineActor {
                 self.try_start_next();
             }
             DownloadStatus::Error => {
+                let _ = self
+                    .notification_tx
+                    .send(EngineNotification::ChunkMapStateChanged {
+                        id: done.id,
+                        state: TransferChunkMapState::Unsupported,
+                    });
                 let _ = self.db_tx.send(DbEvent::Error { id: done.id });
                 self.try_start_next();
             }
@@ -666,6 +712,14 @@ impl EngineActor {
                 let _ = self
                     .notification_tx
                     .send(EngineNotification::ControlSupportChanged { id, support });
+            }
+            TaskRuntimeUpdate::ChunkMapStateChanged { id, state } => {
+                if !self.tasks.contains_key(&id) {
+                    return;
+                }
+                let _ = self
+                    .notification_tx
+                    .send(EngineNotification::ChunkMapStateChanged { id, state });
             }
         }
     }
