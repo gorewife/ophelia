@@ -270,7 +270,7 @@ impl Render for DownloadModal {
                     .child(
                         div()
                             .text_xl()
-                            .font_weight(gpui::FontWeight::BOLD)
+                            .font_weight(gpui::FontWeight::NORMAL)
                             .text_color(Colors::foreground())
                             .child(t!("download_modal.title").to_string()),
                     )
@@ -282,7 +282,7 @@ impl Render for DownloadModal {
                             .child(
                                 div()
                                     .text_sm()
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .font_weight(gpui::FontWeight::LIGHT)
                                     .text_color(Colors::muted_foreground())
                                     .child(t!("download_modal.url_label").to_string()),
                             )
@@ -313,7 +313,7 @@ impl Render for DownloadModal {
                             .child(
                                 div()
                                     .text_sm()
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .font_weight(gpui::FontWeight::LIGHT)
                                     .text_color(Colors::muted_foreground())
                                     .child(t!("download_modal.destination_label").to_string()),
                             )

@@ -315,7 +315,7 @@ impl RenderOnce for SidebarDownloadButton {
             .rounded(px(Chrome::BUTTON_RADIUS))
             .bg(Colors::active())
             .text_color(Colors::background())
-            .font_weight(gpui::FontWeight::BOLD)
+            .font_weight(gpui::FontWeight::NORMAL)
             .on_click(move |_, window, cx| {
                 on_click(window, cx);
             });
@@ -382,7 +382,7 @@ impl RenderOnce for SidebarNavItem {
             .bg(bg)
             .text_color(text)
             .text_sm()
-            .font_weight(gpui::FontWeight::BOLD)
+            .font_weight(gpui::FontWeight::NORMAL)
             .cursor_pointer()
             .when(self.item.active, |this| {
                 this.border_l_2().border_color(Colors::ring())
@@ -422,7 +422,7 @@ impl RenderOnce for StorageCard {
                     .items_center()
                     .gap(px(6.0))
                     .text_sm()
-                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .font_weight(gpui::FontWeight::LIGHT)
                     .text_color(Colors::finished())
                     .child(icon_sm(IconName::Database, Colors::finished()))
                     .child(t!("sidebar.storage").to_string()),
@@ -441,7 +441,7 @@ impl RenderOnce for StorageCard {
                     .child(
                         div()
                             .text_sm()
-                            .font_weight(gpui::FontWeight::BOLD)
+                            .font_weight(gpui::FontWeight::NORMAL)
                             .text_color(Colors::muted_foreground())
                             .mb(px(1.0))
                             .child("/"),
@@ -449,7 +449,7 @@ impl RenderOnce for StorageCard {
                     .child(
                         div()
                             .text_base()
-                            .font_weight(gpui::FontWeight::BOLD)
+                            .font_weight(gpui::FontWeight::NORMAL)
                             .text_color(Colors::muted_foreground())
                             .child(self.model.total),
                     ),

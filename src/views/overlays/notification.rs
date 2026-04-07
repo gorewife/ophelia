@@ -74,7 +74,7 @@ impl Render for Notification {
                     .child(
                         div()
                             .text_sm()
-                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .font_weight(gpui::FontWeight::LIGHT)
                             .text_color(Colors::foreground())
                             .truncate()
                             .child(self.filename.clone()),

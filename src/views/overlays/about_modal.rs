@@ -107,7 +107,7 @@ impl RenderOnce for AboutModal {
                                     .child(
                                         div()
                                             .text_xl()
-                                            .font_weight(FontWeight::BOLD)
+                                            .font_weight(FontWeight::NORMAL)
                                             .text_color(Colors::foreground())
                                             .child(t!("app.name").to_string()),
                                     )
@@ -141,7 +141,7 @@ impl RenderOnce for AboutModal {
                                 .rounded(px(Chrome::BUTTON_RADIUS))
                                 .bg(Colors::active())
                                 .text_sm()
-                                .font_weight(FontWeight::BOLD)
+                                .font_weight(FontWeight::NORMAL)
                                 .text_color(Colors::background())
                                 .cursor_pointer()
                                 .on_click(move |_, window, cx| {

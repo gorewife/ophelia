@@ -107,9 +107,9 @@ impl RenderOnce for SegmentedControl {
                     .justify_center()
                     .text_sm()
                     .font_weight(if option.selected {
-                        gpui::FontWeight::SEMIBOLD
+                        gpui::FontWeight::LIGHT
                     } else {
-                        gpui::FontWeight::NORMAL
+                        gpui::FontWeight::LIGHT
                     })
                     .text_color(if option.selected {
                         Colors::foreground()

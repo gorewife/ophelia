@@ -344,7 +344,7 @@ fn primary_speed_metric(label: String, value: String, caption: String) -> impl I
         .child(
             div()
                 .text_xs()
-                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .font_weight(gpui::FontWeight::LIGHT)
                 .text_color(Colors::muted_foreground())
                 .child(label),
         )
@@ -363,7 +363,7 @@ fn primary_speed_metric(label: String, value: String, caption: String) -> impl I
                     div()
                         .pb(px(3.0))
                         .text_sm()
-                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .font_weight(gpui::FontWeight::LIGHT)
                         .text_color(Colors::muted_foreground())
                         .child("MB/s"),
                 ),
@@ -393,7 +393,7 @@ fn disk_io_metric(
                 .child(
                     div()
                         .text_xs()
-                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .font_weight(gpui::FontWeight::LIGHT)
                         .text_color(Colors::muted_foreground())
                         .child(label),
                 )
@@ -413,14 +413,14 @@ fn io_metric(label: String, speed: Option<f32>) -> impl IntoElement {
         .child(
             div()
                 .text_xs()
-                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .font_weight(gpui::FontWeight::LIGHT)
                 .text_color(Colors::muted_foreground())
                 .child(label),
         )
         .child(
             div()
                 .text_sm()
-                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .font_weight(gpui::FontWeight::LIGHT)
                 .text_color(if speed.is_some() {
                     Colors::foreground()
                 } else {
@@ -437,7 +437,7 @@ fn count_metric(label: &str, value: &str, color: Hsla) -> impl IntoElement {
         .child(
             div()
                 .text_sm()
-                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .font_weight(gpui::FontWeight::LIGHT)
                 .text_color(Colors::muted_foreground())
                 .child(label.to_string()),
         )

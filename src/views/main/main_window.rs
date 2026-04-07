@@ -48,7 +48,6 @@ const TRANSFERS_STATS_PANEL_DEFAULT_WIDTH: f32 = 640.0;
 const TRANSFERS_STATS_PANEL_MIN_WIDTH: f32 = 360.0;
 const TRANSFERS_CHUNK_PANEL_DEFAULT_WIDTH: f32 = 320.0;
 const TRANSFERS_CHUNK_PANEL_MIN_WIDTH: f32 = 220.0;
-
 /// Root view
 /// owns the full window layout and all live state.
 pub struct MainWindow {

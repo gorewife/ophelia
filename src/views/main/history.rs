@@ -224,7 +224,7 @@ impl RenderOnce for HistoryItemRow {
                     .child(
                         div()
                             .text_sm()
-                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .font_weight(gpui::FontWeight::LIGHT)
                             .text_color(Colors::foreground())
                             .truncate()
                             .child(self.model.filename),

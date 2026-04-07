@@ -15,7 +15,7 @@
 
 use gpui::{Rgba, rgb, rgba};
 
-pub const APP_FONT_FAMILY: &str = "Inter";
+pub const APP_FONT_FAMILY: &str = "IBM Plex Sans";
 
 // ---------------------------------------------------------------------------
 // Color palette

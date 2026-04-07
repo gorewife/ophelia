@@ -220,7 +220,7 @@ fn render_destination_rules_section(
                         .child(
                             div()
                                 .text_sm()
-                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .font_weight(gpui::FontWeight::LIGHT)
                                 .text_color(Colors::foreground())
                                 .child(
                                     t!("settings.destinations.destination_rules_title").to_string(),
@@ -346,7 +346,7 @@ fn render_destination_rule_row(
                         .child(
                             div()
                                 .text_sm()
-                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .font_weight(gpui::FontWeight::LIGHT)
                                 .text_color(Colors::foreground())
                                 .truncate()
                                 .child(label),

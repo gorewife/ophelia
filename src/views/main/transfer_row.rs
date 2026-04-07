@@ -183,7 +183,7 @@ impl RenderOnce for TransferRowDetails {
                             .flex_1()
                             .min_w_0()
                             .text_base()
-                            .font_weight(gpui::FontWeight::BOLD)
+                            .font_weight(gpui::FontWeight::NORMAL)
                             .truncate()
                             .child(self.filename),
                     )
@@ -198,7 +198,7 @@ impl RenderOnce for TransferRowDetails {
                     .child(
                         div()
                             .flex_shrink_0()
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .font_weight(gpui::FontWeight::LIGHT)
                             .child(self.size_label),
                     )
                     .child(div().flex_shrink_0().child("•"))
@@ -214,7 +214,7 @@ impl RenderOnce for TransferRowDetails {
                             .w(px(38.0))
                             .text_right()
                             .text_sm()
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .font_weight(gpui::FontWeight::LIGHT)
                             .text_color(Colors::foreground())
                             .child(self.progress_label),
                     ),
@@ -299,7 +299,7 @@ fn status_badge(state: TransferDisplayState) -> impl IntoElement {
         .border_color(state.badge_border_color())
         .bg(Colors::background())
         .text_xs()
-        .font_weight(gpui::FontWeight::SEMIBOLD)
+        .font_weight(gpui::FontWeight::LIGHT)
         .text_color(state.accent_color())
         .child(state.badge_label())
 }
