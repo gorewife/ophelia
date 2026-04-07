@@ -78,7 +78,7 @@ impl Sidebar {
                 ),
                 SidebarNavItemModel::new(
                     1,
-                    IconName::Database,
+                    IconName::History,
                     t!("sidebar.history").to_string(),
                     self.active_item == 1,
                 ),
