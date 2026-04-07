@@ -40,7 +40,7 @@ use crate::engine::state::{self, HistoryReader};
 use crate::engine::{
     AddDownloadRequest, ArtifactState, DownloadControlAction, DownloadEngine, DownloadId,
     DownloadSpec, DownloadStatus, EngineNotification, HistoryFilter, HistoryRow, ProgressUpdate,
-    RestoredDownload, SavedDownload, TransferControlSupport,
+    RestoredDownload, SavedDownload, TransferChunkMapState, TransferControlSupport,
 };
 use crate::ipc::IpcServer;
 use crate::settings::Settings;
@@ -64,6 +64,7 @@ pub struct Downloads {
     pub statuses: Vec<DownloadStatus>,
     /// Provider-declared lifecycle controls for each live transfer.
     pub control_supports: Vec<TransferControlSupport>,
+    pub transfer_chunk_maps: Vec<TransferChunkMapState>,
     pub downloaded_bytes: Vec<u64>,
     pub total_bytes: Vec<Option<u64>>,
     pub speeds: Vec<u64>,
@@ -258,6 +259,7 @@ impl Downloads {
             destinations: Vec::new(),
             statuses: Vec::new(),
             control_supports: Vec::new(),
+            transfer_chunk_maps: Vec::new(),
             downloaded_bytes: Vec::new(),
             total_bytes: Vec::new(),
             speeds: Vec::new(),
@@ -362,6 +364,8 @@ impl Downloads {
         self.destinations.push(dest_str);
         self.statuses.push(DownloadStatus::Pending);
         self.control_supports.push(control_support);
+        self.transfer_chunk_maps
+            .push(TransferChunkMapState::Unsupported);
         self.downloaded_bytes.push(0);
         self.total_bytes.push(None);
         self.speeds.push(0);
@@ -484,6 +488,11 @@ impl Downloads {
             .collect()
     }
 
+    #[allow(dead_code)] // reserved for the Transfers chunk bitmap card once the frontend consumes it.
+    pub fn transfer_chunk_map_state(&self, id: DownloadId) -> TransferChunkMapState {
+        transfer_chunk_map_state_or_unsupported(&self.transfer_chunk_maps, self.index_of(id))
+    }
+
     pub fn storage_summary(&self) -> SidebarStorageSummary {
         storage_summary_for_path(&self.settings.download_dir())
     }
@@ -529,6 +538,8 @@ impl Downloads {
         self.destinations.push(dest_str);
         self.statuses.push(DownloadStatus::Paused);
         self.control_supports.push(saved.source.control_support());
+        self.transfer_chunk_maps
+            .push(TransferChunkMapState::Unsupported);
         self.downloaded_bytes.push(saved.downloaded_bytes);
         self.total_bytes.push(saved.total_bytes);
         self.speeds.push(0);
@@ -585,6 +596,12 @@ impl Downloads {
                     cx.notify();
                 }
             }
+            EngineNotification::ChunkMapStateChanged { id, state } => {
+                if let Some(idx) = self.index_of(id) {
+                    self.transfer_chunk_maps[idx] = state;
+                    cx.notify();
+                }
+            }
             EngineNotification::LiveTransferRemoved {
                 id,
                 action,
@@ -619,6 +636,7 @@ impl Downloads {
             self.destinations.remove(idx);
             self.statuses.remove(idx);
             self.control_supports.remove(idx);
+            self.transfer_chunk_maps.remove(idx);
             self.downloaded_bytes.remove(idx);
             self.total_bytes.remove(idx);
             self.speeds.remove(idx);
@@ -681,6 +699,16 @@ fn build_row_index(ids: &[DownloadId]) -> HashMap<DownloadId, usize> {
         .enumerate()
         .map(|(index, id)| (id, index))
         .collect()
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+fn transfer_chunk_map_state_or_unsupported(
+    states: &[TransferChunkMapState],
+    index: Option<usize>,
+) -> TransferChunkMapState {
+    index
+        .and_then(|idx| states.get(idx).cloned())
+        .unwrap_or(TransferChunkMapState::Unsupported)
 }
 
 fn query_disk(path: &Path) -> (u64, u64) {
@@ -800,5 +828,28 @@ mod tests {
         assert_eq!(map.get(&DownloadId(7)), Some(&0));
         assert_eq!(map.get(&DownloadId(11)), Some(&1));
         assert_eq!(map.get(&DownloadId(3)), Some(&2));
+    }
+
+    #[test]
+    fn transfer_chunk_map_state_defaults_to_unsupported_for_missing_rows() {
+        let states = vec![TransferChunkMapState::Loading];
+
+        assert_eq!(
+            transfer_chunk_map_state_or_unsupported(&states, None),
+            TransferChunkMapState::Unsupported
+        );
+    }
+
+    #[test]
+    fn transfer_chunk_map_state_returns_stored_state_for_present_rows() {
+        let states = vec![
+            TransferChunkMapState::Unsupported,
+            TransferChunkMapState::Loading,
+        ];
+
+        assert_eq!(
+            transfer_chunk_map_state_or_unsupported(&states, Some(1)),
+            TransferChunkMapState::Loading
+        );
     }
 }

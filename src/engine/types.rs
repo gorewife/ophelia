@@ -85,6 +85,26 @@ pub enum ArtifactState {
     Missing,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChunkMapCellState {
+    Empty,
+    Partial,
+    Complete,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HttpChunkMapSnapshot {
+    pub total_bytes: u64,
+    pub cells: Vec<ChunkMapCellState>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TransferChunkMapState {
+    Unsupported,
+    Loading,
+    Http(HttpChunkMapSnapshot),
+}
+
 /// Events emitted by the engine actor and app layer, consumed by the DbEventWorker.
 /// The worker is the sole writer to SQLite and nothing else touches the DB.
 pub enum DbEvent {
@@ -293,6 +313,10 @@ pub enum EngineNotification {
         id: DownloadId,
         support: TransferControlSupport,
     },
+    ChunkMapStateChanged {
+        id: DownloadId,
+        state: TransferChunkMapState,
+    },
     LiveTransferRemoved {
         id: DownloadId,
         action: LiveTransferRemovalAction,
@@ -325,5 +349,9 @@ pub enum TaskRuntimeUpdate {
     ControlSupportChanged {
         id: DownloadId,
         support: TransferControlSupport,
+    },
+    ChunkMapStateChanged {
+        id: DownloadId,
+        state: TransferChunkMapState,
     },
 }

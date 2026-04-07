@@ -7,7 +7,6 @@ Ophelia keeps the frontend and backend split into a few clear layers:
 - `theme.rs`: shared design tokens and visual constants
 - `app.rs`: app-layer bridge between GPUI and the backend engine
 - `app_menu.rs` / `app_actions.rs`: app-level actions, shortcuts, and menu wiring
-- `platform/`: platform-specific window/chrome integration
 - `platform/`: shared OS integration such as window chrome and app path policy
 - `engine/`: download engine, persistence, and provider-specific backend logic
 - `ipc.rs`: local ingress for browser-extension download handoff
@@ -39,6 +38,7 @@ These names are intentional too:
 - `runtime control support`: active transfers can narrow their available controls once runtime facts are known, such as HTTP falling back to single-stream mode
 - `live transfer removal action`: whether a live row left the active surface because the transfer was cancelled or because the artifact was deleted
 - `destination policy`: backend-owned resolution of destination folders, collision behavior, and final-file commit semantics
+- `chunk map state`: HTTP-specific, active-transfer-only visualization state for the Transfers view that stays out of persistence and does not expose raw executor slot arrays
 
 ## Directory map
 
@@ -83,7 +83,7 @@ These names are intentional too:
 
 - `app.rs`: GPUI-facing download model, backend service owner, progress polling, and history bridge
     - current remove/delete behavior is backend-owned: the app bridge asks the engine to delete artifacts, removes the live row on engine notification, and keeps history intact
-    - also caches provider kind, source label, control support, and an `id -> index` side map for each live row
+    - also caches provider kind, source label, control support, HTTP chunk-map state, and an `id -> index` side map for each live row
     - backend notifications now distinguish cancel-transfer from delete-artifact even though the current UI still handles both as “remove the live row and refresh history”
     - backend state now supports a frontend model of one `Transfers` surface with internal status filters plus a separate global `History` surface
 - `ipc.rs`: local Axum server plus app-owned IPC ingress handle
@@ -99,7 +99,7 @@ These names are intentional too:
     - `spec.rs`: provider-neutral add/restore request shapes, ingress normalization, and settings-driven provider/config plus destination-policy mapping
     - `types.rs`: shared engine-facing types, persisted source/resume data, provider-aware history read models, progress updates, and engine notifications
     - `state/`: SQLite persistence, provider-kind-aware storage/bootstrap, provider-specific resume-state helpers, DB worker, and history reader
-    - `http/`: HTTP-specific executor pipeline
+    - `http/`: HTTP-specific executor pipeline, including live chunk-map snapshot reporting for active chunked transfers
 
 ## Placement rules
 

@@ -25,6 +25,7 @@ pub mod config;
 pub mod task;
 pub mod throttle;
 
+mod chunk_map;
 mod error;
 mod health;
 mod probe;

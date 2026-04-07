@@ -17,6 +17,8 @@
 **       じしf_,)ノ
 **************************************************/
 
+#![allow(dead_code)]
+
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -70,6 +72,25 @@ pub async fn drain_progress(
 
 pub fn last_status(updates: &[ProgressUpdate]) -> Option<DownloadStatus> {
     updates.last().map(|u| u.status)
+}
+
+pub async fn wait_for_runtime_update(
+    rx: &mut mpsc::UnboundedReceiver<TaskRuntimeUpdate>,
+    mut predicate: impl FnMut(&TaskRuntimeUpdate) -> bool,
+) -> TaskRuntimeUpdate {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        if let Ok(update) = rx.try_recv()
+            && predicate(&update)
+        {
+            return update;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "timed out waiting for matching runtime update"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
 }
 
 // ---------------------------------------------------------------------------
