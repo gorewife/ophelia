@@ -71,6 +71,7 @@ impl Button {
         self
     }
 
+    #[allow(dead_code)] // generic button still supports icons even if the current settings pass doesn't use them
     pub fn icon(mut self, icon: IconName) -> Self {
         self.icon = Some(icon);
         self

@@ -17,15 +17,24 @@
 **       じしf_,)ノ
 **************************************************/
 
+use std::sync::{
+    OnceLock,
+    atomic::{AtomicUsize, Ordering},
+};
+
 use gpui::{Context, IntoElement, ParentElement, Styled, div, prelude::*, px};
 use rust_i18n::t;
 
-use crate::settings::{CollisionStrategy, HttpDownloadOrderingMode};
+use crate::settings::{
+    CollisionStrategy, HttpDownloadOrderingMode, suggested_destination_rule_icon_name,
+};
 use crate::ui::prelude::*;
 
 use super::{DestinationRuleEditor, SettingsWindow};
 
 pub(super) fn render(this: &SettingsWindow, cx: &mut Context<SettingsWindow>) -> gpui::Div {
+    debug_destinations_render(this.destination_rule_editors.len());
+
     div()
         .flex_col()
         .gap(px(Spacing::SETTINGS_SECTION_GAP))
@@ -193,7 +202,6 @@ fn render_destination_rules_section(
 ) -> impl IntoElement {
     let entity = cx.entity();
     let restore_entity = entity.clone();
-    let add_entity = entity.clone();
 
     div()
         .flex_col()
@@ -243,17 +251,6 @@ fn render_destination_rules_section(
                                     this.restore_default_destination_rules(cx)
                                 });
                             }),
-                        )
-                        .child(
-                            Button::new(
-                                "add-destination-rule",
-                                t!("settings.destinations.destination_rules_add").to_string(),
-                            )
-                            .icon(IconName::Plus)
-                            .on_click(move |_, _, app| {
-                                let _ = add_entity
-                                    .update(app, |this, cx| this.add_destination_rule(cx));
-                            }),
                         ),
                 ),
         )
@@ -264,11 +261,10 @@ fn render_destination_rules_section(
                 .p(px(Chrome::SETTINGS_SECTION_PANEL_PADDING))
                 .rounded(px(Chrome::PANEL_RADIUS))
                 .border_1()
-                .border_color(Colors::border())
-                .bg(if this.settings.destination_rules_enabled {
-                    Colors::card()
+                .border_color(if this.settings.destination_rules_enabled {
+                    Colors::border()
                 } else {
-                    Colors::muted()
+                    Colors::input_border()
                 })
                 .when(this.destination_rule_editors.is_empty(), |this| {
                     this.child(
@@ -295,48 +291,73 @@ fn render_destination_rules_section(
                         .iter()
                         .enumerate()
                         .map(|(index, rule)| {
-                            render_destination_rule_row(this, index, rule, cx).into_any_element()
+                            render_destination_rule_row(this, index, index == 0, rule, cx)
+                                .into_any_element()
                         }),
                 ),
         )
 }
 
 fn render_destination_rule_row(
-    this: &SettingsWindow,
+    _this: &SettingsWindow,
     index: usize,
+    is_first: bool,
     rule: &DestinationRuleEditor,
     cx: &mut Context<SettingsWindow>,
 ) -> impl IntoElement {
+    debug_destination_rule_row_render();
+
     let entity = cx.entity();
     let toggle_entity = entity.clone();
-    let remove_entity = entity.clone();
+    let icon_name = destination_rule_icon_name(rule, cx);
+    let label = destination_rule_label(rule, cx);
+    let extensions = destination_rule_extensions_preview(rule, cx);
 
     div()
         .flex_col()
-        .gap(px(Spacing::SETTINGS_PANEL_GAP))
-        .p(px(Chrome::SETTINGS_RULE_CARD_PADDING))
-        .rounded(px(Chrome::CARD_RADIUS))
-        .border_1()
-        .border_color(if rule.enabled {
-            Colors::border()
-        } else {
-            Colors::input_border()
+        .gap(px(Spacing::SETTINGS_INLINE_GAP))
+        .py(px(Chrome::SETTINGS_RULE_CARD_PADDING))
+        .when(!is_first, |this| {
+            this.border_t_1().border_color(Colors::border())
         })
-        .bg(Colors::background())
         .child(
             div()
                 .flex()
                 .items_center()
-                .gap(px(Spacing::SETTINGS_PANEL_GAP))
-                .child(super::destination_rule_icon_picker::render(
-                    this, index, rule, cx,
-                ))
-                .child(div().w(px(148.0)).child(rule.label_input.clone()))
+                .gap(px(Spacing::SETTINGS_INLINE_GAP))
+                .child(
+                    div()
+                        .size(px(Chrome::SETTINGS_ICON_TRIGGER_SIZE))
+                        .rounded(px(Chrome::CARD_RADIUS))
+                        .border_1()
+                        .border_color(Colors::input_border())
+                        .bg(Colors::background())
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(file_type_icon_sm(&icon_name, Colors::foreground())),
+                )
                 .child(
                     div()
                         .flex_1()
                         .min_w_0()
-                        .child(rule.extensions_input.clone()),
+                        .flex_col()
+                        .gap(px(Spacing::SETTINGS_LABEL_GAP))
+                        .child(
+                            div()
+                                .text_sm()
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .text_color(Colors::foreground())
+                                .truncate()
+                                .child(label),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(Colors::muted_foreground())
+                                .truncate()
+                                .child(extensions),
+                        ),
                 )
                 .child(
                     Switch::new(format!("destination-rule-enabled-{}", rule.id))
@@ -346,23 +367,73 @@ fn render_destination_rule_row(
                                 this.set_destination_rule_enabled(index, checked, cx)
                             });
                         }),
-                )
-                .child(
-                    div()
-                        .id(format!("remove-destination-rule-{index}"))
-                        .size(px(32.0))
-                        .rounded(px(8.0))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .cursor_pointer()
-                        .hover(|style| style.bg(Colors::muted()))
-                        .on_click(move |_, _, app| {
-                            let _ = remove_entity
-                                .update(app, |this, cx| this.remove_destination_rule(index, cx));
-                        })
-                        .child(icon_sm(IconName::Trash2, Colors::muted_foreground())),
                 ),
         )
         .child(rule.target_dir_input.clone())
+}
+
+fn destination_rule_icon_name(
+    rule: &DestinationRuleEditor,
+    cx: &Context<SettingsWindow>,
+) -> String {
+    if let Some(icon_name) = rule.icon_name.as_ref() {
+        return icon_name.clone();
+    }
+
+    let label = rule.label_input.read(cx).text().to_string();
+    let extensions = super::parse_extensions_input(rule.extensions_input.read(cx).text());
+    suggested_destination_rule_icon_name(&label, &extensions).to_string()
+}
+
+fn destination_rule_label(rule: &DestinationRuleEditor, cx: &Context<SettingsWindow>) -> String {
+    let label = rule.label_input.read(cx).text().trim().to_string();
+    if label.is_empty() {
+        "Custom Rule".to_string()
+    } else {
+        label
+    }
+}
+
+fn destination_rule_extensions_preview(
+    rule: &DestinationRuleEditor,
+    cx: &Context<SettingsWindow>,
+) -> String {
+    let extensions = rule.extensions_input.read(cx).text().trim().to_string();
+    if extensions.is_empty() {
+        "Extensions are editable in settings.json".to_string()
+    } else {
+        extensions
+    }
+}
+
+fn debug_destinations_render(rule_count: usize) {
+    #[cfg(debug_assertions)]
+    {
+        static ENABLED: OnceLock<bool> = OnceLock::new();
+        static COUNT: AtomicUsize = AtomicUsize::new(0);
+
+        if *ENABLED.get_or_init(|| std::env::var_os("OPHELIA_DEBUG_DESTINATIONS_RENDER").is_some())
+        {
+            let count = COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+            if count <= 10 || count % 25 == 0 {
+                eprintln!("[settings/destinations] render #{count} (rules={rule_count})");
+            }
+        }
+    }
+}
+
+fn debug_destination_rule_row_render() {
+    #[cfg(debug_assertions)]
+    {
+        static ENABLED: OnceLock<bool> = OnceLock::new();
+        static COUNT: AtomicUsize = AtomicUsize::new(0);
+
+        if *ENABLED.get_or_init(|| std::env::var_os("OPHELIA_DEBUG_DESTINATIONS_RENDER").is_some())
+        {
+            let count = COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+            if count <= 20 || count % 50 == 0 {
+                eprintln!("[settings/destination-rule-row] render #{count}");
+            }
+        }
+    }
 }

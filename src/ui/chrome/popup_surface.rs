@@ -52,6 +52,7 @@ impl PopupSurface {
         }
     }
 
+    #[allow(dead_code)] // keep the API shape aligned with gpui-component even when no current caller needs a fixed width
     pub fn width(mut self, width: Pixels) -> Self {
         self.width = Some(width);
         self
