@@ -39,7 +39,6 @@ use crate::settings::{
 use crate::theme::APP_FONT_FAMILY;
 use crate::ui::prelude::*;
 
-mod destination_rule_icon_picker;
 mod destinations;
 mod general;
 mod network;
@@ -102,8 +101,6 @@ pub struct SettingsWindow {
     pub(super) concurrent_downloads_input: Entity<NumberInput>,
     pub(super) connections_per_download_input: Entity<NumberInput>,
     pub(super) connections_per_server_input: Entity<NumberInput>,
-    next_destination_rule_index: usize,
-    pub(super) open_icon_picker_rule: Option<usize>,
 }
 
 impl EventEmitter<SettingsClosed> for SettingsWindow {}
@@ -122,7 +119,6 @@ impl SettingsWindow {
             .iter()
             .map(|rule| DestinationRuleEditor::from_rule(rule, cx))
             .collect::<Vec<_>>();
-        let next_destination_rule_index = next_destination_rule_index(&settings.destination_rules);
         let language_select = cx.new(|cx| {
             DropdownSelect::new(
                 "settings-language",
@@ -210,8 +206,6 @@ impl SettingsWindow {
             }),
             settings,
             active: Section::General,
-            next_destination_rule_index,
-            open_icon_picker_rule: None,
         }
     }
 
@@ -328,15 +322,6 @@ impl SettingsWindow {
         }
     }
 
-    pub(super) fn add_destination_rule(&mut self, cx: &mut Context<Self>) {
-        let id = format!("destination-rule-{}", self.next_destination_rule_index);
-        self.next_destination_rule_index += 1;
-        let target_dir = self.download_dir_input.read(cx).text(cx).to_string();
-        self.destination_rule_editors
-            .push(DestinationRuleEditor::empty(id, target_dir, cx));
-        cx.notify();
-    }
-
     pub(super) fn restore_default_destination_rules(&mut self, cx: &mut Context<Self>) {
         let fallback_download_dir =
             parse_path_input(self.download_dir_input.read(cx).text(cx).as_ref())
@@ -346,53 +331,7 @@ impl SettingsWindow {
             .iter()
             .map(|rule| DestinationRuleEditor::from_rule(rule, cx))
             .collect();
-        self.next_destination_rule_index = next_destination_rule_index(&default_rules);
-        self.open_icon_picker_rule = None;
         cx.notify();
-    }
-
-    pub(super) fn remove_destination_rule(&mut self, index: usize, cx: &mut Context<Self>) {
-        if index < self.destination_rule_editors.len() {
-            self.destination_rule_editors.remove(index);
-            self.open_icon_picker_rule = match self.open_icon_picker_rule {
-                Some(open_index) if open_index == index => None,
-                Some(open_index) if open_index > index => Some(open_index - 1),
-                current => current,
-            };
-            cx.notify();
-        }
-    }
-
-    pub(super) fn toggle_destination_rule_icon_picker(
-        &mut self,
-        index: usize,
-        cx: &mut Context<Self>,
-    ) {
-        self.open_icon_picker_rule = if self.open_icon_picker_rule == Some(index) {
-            None
-        } else {
-            Some(index)
-        };
-        cx.notify();
-    }
-
-    pub(super) fn close_destination_rule_icon_picker(&mut self, cx: &mut Context<Self>) {
-        if self.open_icon_picker_rule.take().is_some() {
-            cx.notify();
-        }
-    }
-
-    pub(super) fn set_destination_rule_icon(
-        &mut self,
-        index: usize,
-        icon_name: Option<String>,
-        cx: &mut Context<Self>,
-    ) {
-        if let Some(rule) = self.destination_rule_editors.get_mut(index) {
-            rule.icon_name = icon_name;
-            self.open_icon_picker_rule = None;
-            cx.notify();
-        }
     }
 }
 
@@ -646,19 +585,6 @@ fn format_extensions_input(extensions: &[String]) -> String {
     extensions.join(", ")
 }
 
-fn next_destination_rule_index(rules: &[DestinationRule]) -> usize {
-    rules
-        .iter()
-        .filter_map(|rule| {
-            rule.id
-                .strip_prefix("destination-rule-")
-                .and_then(|suffix| suffix.parse::<usize>().ok())
-        })
-        .max()
-        .map(|index| index + 1)
-        .unwrap_or_else(|| rules.len() + 1)
-}
-
 pub(super) struct DestinationRuleEditor {
     pub(super) id: String,
     pub(super) enabled: bool,
@@ -682,11 +608,7 @@ impl DestinationRuleEditor {
                 )
             }),
             extensions_input: cx.new(|cx| {
-                TextField::new(
-                    format_extensions_input(&rule.extensions),
-                    ".mp4, .mkv",
-                    cx,
-                )
+                TextField::new(format_extensions_input(&rule.extensions), ".mp4, .mkv", cx)
             }),
             target_dir_input: cx.new(|cx| {
                 DirectoryInput::new(
@@ -697,40 +619,6 @@ impl DestinationRuleEditor {
             }),
         }
     }
-
-    fn empty(
-        id: String,
-        fallback_target_dir: impl Into<SharedString>,
-        cx: &mut Context<SettingsWindow>,
-    ) -> Self {
-        Self {
-            id,
-            enabled: true,
-            icon_name: None,
-            label_input: cx.new(|cx| {
-                TextField::new(
-                    "",
-                    t!("settings.destinations.destination_rule_label_placeholder").to_string(),
-                    cx,
-                )
-            }),
-            extensions_input: cx.new(|cx| {
-                TextField::new(
-                    "",
-                    ".mp4, .mkv",
-                    cx,
-                )
-            }),
-            target_dir_input: cx.new(|cx| {
-                DirectoryInput::new(
-                    fallback_target_dir,
-                    t!("settings.destinations.destination_rule_directory_placeholder").to_string(),
-                    cx,
-                )
-            }),
-        }
-    }
-
     fn to_rule(
         &self,
         index: usize,
@@ -814,30 +702,6 @@ mod tests {
             parse_extensions_input(".mp3, flac,  .wav "),
             vec![".mp3", "flac", ".wav"]
         );
-    }
-
-    #[test]
-    fn computes_next_destination_rule_index_from_existing_rules() {
-        let rules = vec![
-            DestinationRule {
-                id: "destination-rule-2".into(),
-                label: "Videos".into(),
-                enabled: true,
-                target_dir: std::path::PathBuf::from("/tmp/videos"),
-                extensions: vec![".mp4".into()],
-                icon_name: Some("video".into()),
-            },
-            DestinationRule {
-                id: "music".into(),
-                label: "Music".into(),
-                enabled: true,
-                target_dir: std::path::PathBuf::from("/tmp/music"),
-                extensions: vec![".mp3".into()],
-                icon_name: Some("audio".into()),
-            },
-        ];
-
-        assert_eq!(next_destination_rule_index(&rules), 3);
     }
 
     #[test]

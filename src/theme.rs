@@ -153,8 +153,6 @@ impl Chrome {
     pub const SETTINGS_RULE_CARD_PADDING: f32 = 14.0;
     pub const SETTINGS_SECTION_PANEL_PADDING: f32 = 16.0;
     pub const SETTINGS_ICON_TRIGGER_SIZE: f32 = 36.0;
-    pub const SETTINGS_ICON_PICKER_WIDTH: f32 = 252.0;
-    pub const SETTINGS_ICON_TILE_SIZE: f32 = 40.0;
 
     pub const MODAL_PADDING: f32 = 28.0;
     pub const MODAL_STACK_GAP: f32 = 18.0;
