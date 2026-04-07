@@ -153,8 +153,7 @@ impl SettingsWindow {
             sequential_download_extensions_input: cx.new(|cx| {
                 TextField::new(
                     format_extensions_input(&settings.sequential_download_extensions),
-                    t!("settings.destinations.sequential_download_extensions_placeholder")
-                        .to_string(),
+                    ".mkv, .webm",
                     cx,
                 )
             }),
@@ -162,7 +161,7 @@ impl SettingsWindow {
             global_speed_limit_input: cx.new(|cx| {
                 NumberInput::new(
                     format!("{}", settings.global_speed_limit_bps / 1024),
-                    t!("settings.network.global_speed_limit_placeholder").to_string(),
+                    "0",
                     0,
                     1_000_000,
                     64,
@@ -172,7 +171,7 @@ impl SettingsWindow {
             ipc_port_input: cx.new(|cx| {
                 NumberInput::new(
                     format!("{}", settings.ipc_port),
-                    t!("settings.network.ipc_port_placeholder").to_string(),
+                    "7373",
                     1,
                     u16::MAX as u64,
                     1,
@@ -182,7 +181,7 @@ impl SettingsWindow {
             concurrent_downloads_input: cx.new(|cx| {
                 NumberInput::new(
                     format!("{}", settings.max_concurrent_downloads),
-                    t!("settings.network.concurrent_downloads_placeholder").to_string(),
+                    "3",
                     1,
                     10,
                     1,
@@ -192,7 +191,7 @@ impl SettingsWindow {
             connections_per_download_input: cx.new(|cx| {
                 NumberInput::new(
                     format!("{}", settings.max_connections_per_download),
-                    t!("settings.network.connections_per_download_placeholder").to_string(),
+                    "8",
                     1,
                     16,
                     1,
@@ -202,7 +201,7 @@ impl SettingsWindow {
             connections_per_server_input: cx.new(|cx| {
                 NumberInput::new(
                     format!("{}", settings.max_connections_per_server),
-                    t!("settings.network.connections_per_server_placeholder").to_string(),
+                    "4",
                     1,
                     16,
                     1,
@@ -685,7 +684,7 @@ impl DestinationRuleEditor {
             extensions_input: cx.new(|cx| {
                 TextField::new(
                     format_extensions_input(&rule.extensions),
-                    t!("settings.destinations.destination_rule_extensions_placeholder").to_string(),
+                    ".mp4, .mkv",
                     cx,
                 )
             }),
@@ -718,7 +717,7 @@ impl DestinationRuleEditor {
             extensions_input: cx.new(|cx| {
                 TextField::new(
                     "",
-                    t!("settings.destinations.destination_rule_extensions_placeholder").to_string(),
+                    ".mp4, .mkv",
                     cx,
                 )
             }),
