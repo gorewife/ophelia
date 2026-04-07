@@ -24,6 +24,7 @@ use gpui::{
 use crate::app::Downloads;
 use crate::app_actions;
 use crate::app_menu;
+use crate::engine::DownloadId;
 use crate::settings::Settings;
 use crate::theme::{APP_FONT_FAMILY, Spacing};
 use crate::ui::prelude::*;
@@ -31,7 +32,7 @@ use crate::views::overlays::about_modal::AboutLayer;
 use crate::views::overlays::download_modal::DownloadModalLayer;
 
 use super::chunk_map::{ChunkMapCard, ChunkMapCardModel};
-use super::download_list::DownloadList;
+use super::transfers_list::{TransferList, TransferListSelectionChanged};
 use super::history::HistoryView;
 use super::sidebar::Sidebar;
 use super::stats_bar::StatsBar;
@@ -55,7 +56,8 @@ pub struct MainWindow {
     sidebar: Entity<Sidebar>,
     sidebar_layout: Entity<ResizableState>,
     downloads: Entity<Downloads>,
-    download_list: Entity<DownloadList>,
+    transfer_list: Entity<TransferList>,
+    selected_transfer_id: Option<DownloadId>,
     history_view: Entity<HistoryView>,
     about_modal: Entity<AboutLayer>,
     download_modal: Entity<DownloadModalLayer>,
@@ -67,7 +69,7 @@ impl MainWindow {
         let downloads = cx.new(|cx| Downloads::new(cx));
         let sidebar = cx.new(|cx| Sidebar::new(downloads.clone(), cx));
         let sidebar_layout = cx.new(|_| ResizableState::default());
-        let download_list = cx.new(|cx| DownloadList::new(downloads.clone(), cx));
+        let transfer_list = cx.new(|cx| TransferList::new(downloads.clone(), cx));
         let history_view = cx.new(|cx| HistoryView::new(downloads.clone(), cx));
         let about_visibility = cx.global::<app_actions::AppState>().show_about.clone();
         let download_modal_visibility = cx
@@ -80,13 +82,22 @@ impl MainWindow {
 
         // Re-render when sidebar nav changes (to switch content pane).
         cx.observe(&sidebar, |_, _, cx| cx.notify()).detach();
+        cx.subscribe(
+            &transfer_list,
+            |this: &mut Self, _, event: &TransferListSelectionChanged, cx| {
+                this.selected_transfer_id = event.id;
+                cx.notify();
+            },
+        )
+        .detach();
 
         Self {
             menu_bar,
             sidebar,
             sidebar_layout,
             downloads,
-            download_list,
+            transfer_list,
+            selected_transfer_id: None,
             history_view,
             about_modal,
             download_modal,
@@ -110,7 +121,11 @@ impl MainWindow {
             MainContentViewModel::History
         } else {
             let downloads = self.downloads.read(cx);
-            let transfer_rows = downloads.transfer_rows();
+            let transfer_rows = self.transfer_list.read(cx).visible_transfer_rows(cx);
+            let selected_transfer_id = resolve_selected_transfer_id_for_transfers(
+                &transfer_rows,
+                self.selected_transfer_id,
+            );
             let (active, finished, queued) = downloads.status_counts();
 
             MainContentViewModel::Downloads(TransfersSummaryViewModel {
@@ -123,11 +138,74 @@ impl MainWindow {
                     finished_count: finished,
                     queued_count: queued,
                 },
-                chunk_map: ChunkMapCardModel::from_transfer_rows(&transfer_rows, &downloads),
+                chunk_map: ChunkMapCardModel::from_transfer_rows(
+                    &transfer_rows,
+                    &downloads,
+                    selected_transfer_id,
+                ),
             })
         };
 
         MainWindowViewModel { content }
+    }
+}
+
+fn resolve_selected_transfer_id_for_transfers(
+    rows: &[crate::app::TransferListRow],
+    selected_id: Option<DownloadId>,
+) -> Option<DownloadId> {
+    match selected_id {
+        Some(selected_id) if rows.iter().any(|row| row.id == selected_id) => Some(selected_id),
+        _ => rows.first().map(|row| row.id),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::{TransferAvailableActions, TransferDisplayState, TransferListRow};
+    use crate::engine::DownloadStatus;
+
+    #[test]
+    fn chunk_map_selection_defaults_to_first_visible_transfer() {
+        let rows = vec![test_row(DownloadId(4)), test_row(DownloadId(9))];
+
+        assert_eq!(
+            resolve_selected_transfer_id_for_transfers(&rows, None),
+            Some(DownloadId(4))
+        );
+    }
+
+    #[test]
+    fn chunk_map_selection_falls_back_when_current_transfer_disappears() {
+        let rows = vec![test_row(DownloadId(12)), test_row(DownloadId(15))];
+
+        assert_eq!(
+            resolve_selected_transfer_id_for_transfers(&rows, Some(DownloadId(99))),
+            Some(DownloadId(12))
+        );
+    }
+
+    fn test_row(id: DownloadId) -> TransferListRow {
+        TransferListRow {
+            id,
+            provider_kind: "http".into(),
+            source_label: "https://example.com/file.bin".into(),
+            filename: "file.bin".into(),
+            destination: "/tmp/file.bin".into(),
+            status: DownloadStatus::Downloading,
+            downloaded_bytes: 512,
+            total_bytes: Some(1024),
+            progress: 0.5,
+            speed_bps: 0,
+            display_state: TransferDisplayState::Active,
+            available_actions: TransferAvailableActions {
+                pause: true,
+                resume: false,
+                cancel: true,
+                delete_artifact: true,
+            },
+        }
     }
 }
 
@@ -261,7 +339,7 @@ impl MainWindow {
                             .size_full()
                             .min_h_0()
                             .overflow_y_scroll()
-                            .child(self.download_list.clone()),
+                            .child(self.transfer_list.clone()),
                     ),
             )
     }

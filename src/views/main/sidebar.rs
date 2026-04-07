@@ -31,7 +31,7 @@ use rust_i18n::t;
 type ClickHandler = Rc<dyn Fn(&mut Window, &mut App)>;
 
 /// Left sidebar
-/// logo, new download button, navigation, storage card
+/// logo, new HTTP download button, navigation, storage card
 pub struct Sidebar {
     pub active_item: usize,
     pub collapsed: bool,
@@ -78,7 +78,7 @@ impl Sidebar {
                 ),
                 SidebarNavItemModel::new(
                     1,
-                    IconName::Database,
+                    IconName::History,
                     t!("sidebar.history").to_string(),
                     self.active_item == 1,
                 ),
@@ -108,7 +108,7 @@ impl Render for Sidebar {
             }
         });
 
-        let open_download: ClickHandler = Rc::new(|window, cx| {
+        let open_http_download: ClickHandler = Rc::new(|window, cx| {
             window.dispatch_action(Box::new(app_menu::OpenDownloadModal), cx);
         });
 
@@ -128,7 +128,7 @@ impl Render for Sidebar {
                     .mb(px(Spacing::SECTION_GAP))
                     .child(SidebarDownloadButton::new(
                         vm.collapsed,
-                        Rc::clone(&open_download),
+                        Rc::clone(&open_http_download),
                     )),
             )
             .child(sidebar_separator().mx(px(Spacing::SIDEBAR_SECTION_PADDING)))

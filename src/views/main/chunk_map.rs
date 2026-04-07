@@ -21,7 +21,7 @@ use gpui::{App, RenderOnce, SharedString, Window, div, prelude::*, px};
 use rust_i18n::t;
 
 use crate::app::{Downloads, TransferListRow};
-use crate::engine::{ChunkMapCellState, TransferChunkMapState};
+use crate::engine::{ChunkMapCellState, DownloadId, TransferChunkMapState};
 use crate::ui::prelude::*;
 
 #[derive(IntoElement)]
@@ -56,18 +56,14 @@ impl ChunkMapCard {
 }
 
 impl ChunkMapCardModel {
-    pub fn from_transfer_rows(rows: &[TransferListRow], downloads: &Downloads) -> Self {
-        let Some((row, state)) = rows
-            .iter()
-            .find_map(|row| {
-                let state = downloads.transfer_chunk_map_state(row.id);
-                (!matches!(state, TransferChunkMapState::Unsupported)).then_some((row, state))
-            })
-            .or_else(|| {
-                rows.first()
-                    .map(|row| (row, downloads.transfer_chunk_map_state(row.id)))
-            })
-        else {
+    pub fn from_transfer_rows(
+        rows: &[TransferListRow],
+        downloads: &Downloads,
+        selected_id: Option<DownloadId>,
+    ) -> Self {
+        let Some((row, state)) = preferred_chunk_map_row(rows, selected_id, |id| {
+            downloads.transfer_chunk_map_state(id)
+        }) else {
             return Self {
                 filename: None,
                 total_size_label: None,
@@ -95,6 +91,25 @@ impl ChunkMapCardModel {
             },
         }
     }
+}
+
+fn preferred_chunk_map_row<'a>(
+    rows: &'a [TransferListRow],
+    selected_id: Option<DownloadId>,
+    mut state_for_id: impl FnMut(DownloadId) -> TransferChunkMapState,
+) -> Option<(&'a TransferListRow, TransferChunkMapState)> {
+    if let Some(selected_id) = selected_id {
+        if let Some(row) = rows.iter().find(|row| row.id == selected_id) {
+            return Some((row, state_for_id(row.id)));
+        }
+    }
+
+    rows.iter()
+        .find_map(|row| {
+            let state = state_for_id(row.id);
+            (!matches!(state, TransferChunkMapState::Unsupported)).then_some((row, state))
+        })
+        .or_else(|| rows.first().map(|row| (row, state_for_id(row.id))))
 }
 
 impl RenderOnce for ChunkMapCard {
@@ -288,6 +303,8 @@ fn format_bytes(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::{TransferAvailableActions, TransferDisplayState};
+    use crate::engine::DownloadStatus;
 
     #[test]
     fn chunk_rows_break_fixed_width_cells_into_grid_rows() {
@@ -304,5 +321,61 @@ mod tests {
         assert_eq!(format_bytes(12_300), "12 KB");
         assert_eq!(format_bytes(4_500_000), "4.5 MB");
         assert_eq!(format_bytes(2_300_000_000), "2.3 GB");
+    }
+
+    #[test]
+    fn selected_row_takes_precedence_for_chunk_map() {
+        let rows = vec![test_row(DownloadId(1)), test_row(DownloadId(2))];
+
+        let chosen = preferred_chunk_map_row(&rows, Some(DownloadId(1)), |id| match id.0 {
+            1 => TransferChunkMapState::Unsupported,
+            2 => TransferChunkMapState::Loading,
+            _ => TransferChunkMapState::Unsupported,
+        })
+        .map(|(row, state)| (row.id, state));
+
+        assert_eq!(
+            chosen,
+            Some((DownloadId(1), TransferChunkMapState::Unsupported))
+        );
+    }
+
+    #[test]
+    fn chunk_map_falls_back_to_first_supported_row_without_selection() {
+        let rows = vec![test_row(DownloadId(1)), test_row(DownloadId(2))];
+
+        let chosen = preferred_chunk_map_row(&rows, None, |id| match id.0 {
+            1 => TransferChunkMapState::Unsupported,
+            2 => TransferChunkMapState::Loading,
+            _ => TransferChunkMapState::Unsupported,
+        })
+        .map(|(row, state)| (row.id, state));
+
+        assert_eq!(
+            chosen,
+            Some((DownloadId(2), TransferChunkMapState::Loading))
+        );
+    }
+
+    fn test_row(id: DownloadId) -> TransferListRow {
+        TransferListRow {
+            id,
+            provider_kind: "http".into(),
+            source_label: "https://example.com/file.bin".into(),
+            filename: "file.bin".into(),
+            destination: "/tmp/file.bin".into(),
+            status: DownloadStatus::Downloading,
+            downloaded_bytes: 512,
+            total_bytes: Some(1024),
+            progress: 0.5,
+            speed_bps: 1_024,
+            display_state: TransferDisplayState::Active,
+            available_actions: TransferAvailableActions {
+                pause: true,
+                resume: false,
+                cancel: true,
+                delete_artifact: true,
+            },
+        }
     }
 }
