@@ -74,7 +74,7 @@ impl TransferDisplayState {
 }
 
 #[derive(IntoElement)]
-pub struct DownloadRow {
+pub struct TransferRow {
     pub id: DownloadId,
     pub filename: SharedString,
     pub destination: SharedString,
@@ -89,7 +89,7 @@ pub struct DownloadRow {
     pub on_remove: Option<Box<dyn Fn(&mut Window, &mut App) + 'static>>,
 }
 
-impl RenderOnce for DownloadRow {
+impl RenderOnce for TransferRow {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
         let border_color = if self.selected {
             Colors::ring()
@@ -114,7 +114,7 @@ impl RenderOnce for DownloadRow {
             .hover(|style| style.border_color(Colors::input_border()))
             .child(transfer_icon_tile(&self.icon_name))
             .child(
-                DownloadRowDetails::new(
+                TransferRowDetails::new(
                     self.filename,
                     self.destination,
                     meta_size.into(),
@@ -125,7 +125,7 @@ impl RenderOnce for DownloadRow {
                 .into_any_element(),
             )
             .child(
-                DownloadRowActions::new(self.id, self.state, self.on_pause_resume, self.on_remove)
+                TransferRowActions::new(self.id, self.state, self.on_pause_resume, self.on_remove)
                     .into_any_element(),
             );
 
@@ -138,7 +138,7 @@ impl RenderOnce for DownloadRow {
 }
 
 #[derive(IntoElement)]
-struct DownloadRowDetails {
+struct TransferRowDetails {
     filename: SharedString,
     destination: SharedString,
     size_label: SharedString,
@@ -147,7 +147,7 @@ struct DownloadRowDetails {
     state: TransferDisplayState,
 }
 
-impl DownloadRowDetails {
+impl TransferRowDetails {
     fn new(
         filename: SharedString,
         destination: SharedString,
@@ -167,7 +167,7 @@ impl DownloadRowDetails {
     }
 }
 
-impl RenderOnce for DownloadRowDetails {
+impl RenderOnce for TransferRowDetails {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
         v_flex()
             .flex_1()
@@ -223,14 +223,14 @@ impl RenderOnce for DownloadRowDetails {
 }
 
 #[derive(IntoElement)]
-struct DownloadRowActions {
+struct TransferRowActions {
     id: DownloadId,
     state: TransferDisplayState,
     on_pause_resume: Option<Box<dyn Fn(&mut Window, &mut App) + 'static>>,
     on_remove: Option<Box<dyn Fn(&mut Window, &mut App) + 'static>>,
 }
 
-impl DownloadRowActions {
+impl TransferRowActions {
     fn new(
         id: DownloadId,
         state: TransferDisplayState,
@@ -246,7 +246,7 @@ impl DownloadRowActions {
     }
 }
 
-impl RenderOnce for DownloadRowActions {
+impl RenderOnce for TransferRowActions {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
         let pause_button = self.on_pause_resume.zip(self.state.action_icon()).map(
             |(on_pause_resume, icon_name)| {
@@ -457,13 +457,13 @@ mod tests {
         assert_eq!(default_transfer_icon_name_for_filename("README"), "default");
     }
 
-    struct DownloadRowHost {
+    struct TransferRowHost {
         selected: bool,
         selection_events: usize,
         primary_action_events: usize,
     }
 
-    impl DownloadRowHost {
+    impl TransferRowHost {
         fn new(_window: &mut Window, _cx: &mut Context<Self>) -> Self {
             Self {
                 selected: false,
@@ -473,13 +473,13 @@ mod tests {
         }
     }
 
-    impl Render for DownloadRowHost {
+    impl Render for TransferRowHost {
         fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
             let entity = cx.entity();
             div()
                 .size_full()
                 .p(px(20.0))
-                .child(div().w(px(720.0)).child(DownloadRow {
+                .child(div().w(px(720.0)).child(TransferRow {
                     id: DownloadId(7),
                     filename: "movie.mkv".into(),
                     destination: "/tmp/Videos/movie.mkv".into(),
@@ -516,7 +516,7 @@ mod tests {
     #[test]
     fn clicking_the_row_selects_it() {
         let mut app = TestApp::new();
-        let mut window = app.open_window(DownloadRowHost::new);
+        let mut window = app.open_window(TransferRowHost::new);
 
         window.draw();
         window.simulate_click(point(px(180.0), px(56.0)), MouseButton::Left);
@@ -530,7 +530,7 @@ mod tests {
     #[test]
     fn clicking_the_primary_action_does_not_select_the_row() {
         let mut app = TestAppContext::single();
-        let window = app.open_window(size(px(800.0), px(240.0)), DownloadRowHost::new);
+        let window = app.open_window(size(px(800.0), px(240.0)), TransferRowHost::new);
         let view = window.root(&mut app).unwrap();
         let cx = VisualTestContext::from_window(*window.deref(), &app).into_mut();
 
@@ -541,7 +541,7 @@ mod tests {
         cx.simulate_click(button_bounds.center(), Modifiers::none());
 
         cx.update(|_window, app| {
-            view.update(app, |host: &mut DownloadRowHost, _cx| {
+            view.update(app, |host: &mut TransferRowHost, _cx| {
                 assert!(!host.selected);
                 assert_eq!(host.selection_events, 0);
                 assert_eq!(host.primary_action_events, 1);

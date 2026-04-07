@@ -27,8 +27,8 @@ use crate::app::{Downloads, TransferListRow};
 use crate::engine::{DownloadId, DownloadStatus};
 use crate::settings::{Settings, suggested_destination_rule_icon_name};
 use crate::ui::prelude::*;
-use crate::views::main::download_row::DownloadRow;
-use crate::views::main::download_row::default_transfer_icon_name_for_filename;
+use crate::views::main::transfer_row::TransferRow;
+use crate::views::main::transfer_row::default_transfer_icon_name_for_filename;
 
 use rust_i18n::t;
 
@@ -56,19 +56,19 @@ impl TransferFilter {
     }
 }
 
-pub struct DownloadList {
+pub struct TransferList {
     downloads: Entity<Downloads>,
     filter: TransferFilter,
     selected_id: Option<DownloadId>,
 }
 
-pub struct DownloadListSelectionChanged {
+pub struct TransferListSelectionChanged {
     pub id: Option<DownloadId>,
 }
 
-impl gpui::EventEmitter<DownloadListSelectionChanged> for DownloadList {}
+impl gpui::EventEmitter<TransferListSelectionChanged> for TransferList {}
 
-impl DownloadList {
+impl TransferList {
     pub fn new(downloads: Entity<Downloads>, cx: &mut Context<Self>) -> Self {
         cx.observe(&downloads, |_, _, cx| cx.notify()).detach();
         Self {
@@ -83,7 +83,7 @@ impl DownloadList {
         rows: Vec<TransferListRow>,
         selected_id: Option<DownloadId>,
         settings: &Settings,
-    ) -> DownloadListViewModel {
+    ) -> TransferListViewModel {
         let downloads = self.downloads.clone();
         let filters = vec![
             TransferFilterChipModel::new(
@@ -149,7 +149,7 @@ impl DownloadList {
                     None
                 };
 
-                DownloadRow {
+                TransferRow {
                     id,
                     filename: row.filename,
                     destination: row.destination,
@@ -166,7 +166,7 @@ impl DownloadList {
             })
             .collect();
 
-        DownloadListViewModel {
+        TransferListViewModel {
             filters,
             rows,
             selected_id,
@@ -188,12 +188,12 @@ impl DownloadList {
         }
 
         self.selected_id = selected_id;
-        cx.emit(DownloadListSelectionChanged { id: selected_id });
+        cx.emit(TransferListSelectionChanged { id: selected_id });
         cx.notify();
     }
 }
 
-impl Render for DownloadList {
+impl Render for TransferList {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (rows, settings) = {
             let downloads = self.downloads.read(cx);
@@ -209,7 +209,7 @@ impl Render for DownloadList {
         let selected_id = resolve_selected_transfer_id(&rows, self.selected_id);
         if selected_id != self.selected_id {
             self.selected_id = selected_id;
-            cx.emit(DownloadListSelectionChanged { id: selected_id });
+            cx.emit(TransferListSelectionChanged { id: selected_id });
         }
 
         let view_model = self.view_model(rows, selected_id, &settings);
@@ -250,7 +250,7 @@ impl Render for DownloadList {
                     })),
             )
             .child(if view_model.rows.is_empty() {
-                DownloadListEmptyState.into_any_element()
+                TransferListEmptyState.into_any_element()
             } else {
                 v_flex()
                     .gap(px(Spacing::LIST_GAP))
@@ -272,9 +272,9 @@ impl Render for DownloadList {
     }
 }
 
-struct DownloadListViewModel {
+struct TransferListViewModel {
     filters: Vec<TransferFilterChipModel>,
-    rows: Vec<DownloadRow>,
+    rows: Vec<TransferRow>,
     selected_id: Option<DownloadId>,
 }
 
@@ -303,9 +303,9 @@ impl TransferFilterChipModel {
 }
 
 #[derive(IntoElement)]
-struct DownloadListEmptyState;
+struct TransferListEmptyState;
 
-impl RenderOnce for DownloadListEmptyState {
+impl RenderOnce for TransferListEmptyState {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
         div()
             .flex_1()

@@ -32,7 +32,7 @@ use crate::views::overlays::about_modal::AboutLayer;
 use crate::views::overlays::download_modal::DownloadModalLayer;
 
 use super::chunk_map::{ChunkMapCard, ChunkMapCardModel};
-use super::download_list::{DownloadList, DownloadListSelectionChanged};
+use super::transfers_list::{TransferList, TransferListSelectionChanged};
 use super::history::HistoryView;
 use super::sidebar::Sidebar;
 use super::stats_bar::StatsBar;
@@ -56,7 +56,7 @@ pub struct MainWindow {
     sidebar: Entity<Sidebar>,
     sidebar_layout: Entity<ResizableState>,
     downloads: Entity<Downloads>,
-    download_list: Entity<DownloadList>,
+    transfer_list: Entity<TransferList>,
     selected_transfer_id: Option<DownloadId>,
     history_view: Entity<HistoryView>,
     about_modal: Entity<AboutLayer>,
@@ -69,7 +69,7 @@ impl MainWindow {
         let downloads = cx.new(|cx| Downloads::new(cx));
         let sidebar = cx.new(|cx| Sidebar::new(downloads.clone(), cx));
         let sidebar_layout = cx.new(|_| ResizableState::default());
-        let download_list = cx.new(|cx| DownloadList::new(downloads.clone(), cx));
+        let transfer_list = cx.new(|cx| TransferList::new(downloads.clone(), cx));
         let history_view = cx.new(|cx| HistoryView::new(downloads.clone(), cx));
         let about_visibility = cx.global::<app_actions::AppState>().show_about.clone();
         let download_modal_visibility = cx
@@ -83,8 +83,8 @@ impl MainWindow {
         // Re-render when sidebar nav changes (to switch content pane).
         cx.observe(&sidebar, |_, _, cx| cx.notify()).detach();
         cx.subscribe(
-            &download_list,
-            |this: &mut Self, _, event: &DownloadListSelectionChanged, cx| {
+            &transfer_list,
+            |this: &mut Self, _, event: &TransferListSelectionChanged, cx| {
                 this.selected_transfer_id = event.id;
                 cx.notify();
             },
@@ -96,7 +96,7 @@ impl MainWindow {
             sidebar,
             sidebar_layout,
             downloads,
-            download_list,
+            transfer_list,
             selected_transfer_id: None,
             history_view,
             about_modal,
@@ -121,7 +121,7 @@ impl MainWindow {
             MainContentViewModel::History
         } else {
             let downloads = self.downloads.read(cx);
-            let transfer_rows = self.download_list.read(cx).visible_transfer_rows(cx);
+            let transfer_rows = self.transfer_list.read(cx).visible_transfer_rows(cx);
             let selected_transfer_id = resolve_selected_transfer_id_for_transfers(
                 &transfer_rows,
                 self.selected_transfer_id,
@@ -339,7 +339,7 @@ impl MainWindow {
                             .size_full()
                             .min_h_0()
                             .overflow_y_scroll()
-                            .child(self.download_list.clone()),
+                            .child(self.transfer_list.clone()),
                     ),
             )
     }

@@ -18,8 +18,8 @@
 **************************************************/
 
 pub mod chunk_map;
-pub mod download_list;
-pub mod download_row;
+pub mod transfers_list;
+pub mod transfer_row;
 pub mod history;
 pub mod main_window;
 pub mod sidebar;
