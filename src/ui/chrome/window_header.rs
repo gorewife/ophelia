@@ -135,7 +135,7 @@ impl RenderOnce for WindowHeader {
                                     this.child(
                                         div()
                                             .text_sm()
-                                            .font_weight(gpui::FontWeight::BOLD)
+                                            .font_weight(gpui::FontWeight::NORMAL)
                                             .text_color(Colors::muted_foreground())
                                             .child(title),
                                     )

@@ -194,7 +194,7 @@ fn step_button(id: &'static str, label: &'static str, side: StepButtonSide) -> S
         .justify_center()
         .bg(Colors::background())
         .text_base()
-        .font_weight(gpui::FontWeight::BOLD)
+        .font_weight(gpui::FontWeight::NORMAL)
         .text_color(Colors::foreground())
         .cursor_pointer()
         .hover(|style: gpui::StyleRefinement| style.bg(Colors::muted()))

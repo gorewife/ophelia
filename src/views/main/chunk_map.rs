@@ -134,7 +134,7 @@ impl RenderOnce for ChunkMapCard {
                             .flex_1()
                             .min_w_0()
                             .text_sm()
-                            .font_weight(gpui::FontWeight::BOLD)
+                            .font_weight(gpui::FontWeight::NORMAL)
                             .text_color(Colors::foreground())
                             .truncate()
                             .child(filename),
@@ -142,7 +142,7 @@ impl RenderOnce for ChunkMapCard {
                     .children(self.model.total_size_label.map(|total_size| {
                         div()
                             .text_xs()
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .font_weight(gpui::FontWeight::LIGHT)
                             .text_color(Colors::muted_foreground())
                             .child(total_size)
                             .into_any_element()
@@ -248,7 +248,7 @@ fn state_message(title: String, detail: String) -> impl IntoElement {
         .child(
             div()
                 .text_sm()
-                .font_weight(gpui::FontWeight::BOLD)
+                .font_weight(gpui::FontWeight::NORMAL)
                 .text_color(Colors::foreground())
                 .text_center()
                 .child(title),

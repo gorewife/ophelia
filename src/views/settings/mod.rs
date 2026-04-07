@@ -454,9 +454,9 @@ impl SettingsWindow {
                     .gap(px(8.0))
                     .text_sm()
                     .font_weight(if is_active {
-                        FontWeight::SEMIBOLD
+                        FontWeight::LIGHT
                     } else {
-                        FontWeight::NORMAL
+                        FontWeight::LIGHT
                     })
                     .text_color(if is_active {
                         Colors::foreground()
@@ -500,7 +500,7 @@ impl SettingsWindow {
                     .flex()
                     .justify_center()
                     .text_sm()
-                    .font_weight(FontWeight::SEMIBOLD)
+                    .font_weight(FontWeight::LIGHT)
                     .text_color(Colors::background())
                     .cursor_pointer()
                     .on_click(cx.listener(|this, _, window, cx| this.save_and_close(window, cx)))
@@ -670,7 +670,7 @@ fn setting_row(
                 .child(
                     div()
                         .text_sm()
-                        .font_weight(FontWeight::SEMIBOLD)
+                        .font_weight(FontWeight::LIGHT)
                         .text_color(Colors::foreground())
                         .child(label),
                 )

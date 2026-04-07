@@ -89,7 +89,7 @@ impl Render for AppMenuBar {
                     .flex()
                     .items_center()
                     .text_sm()
-                    .font_weight(FontWeight::SEMIBOLD)
+                    .font_weight(FontWeight::LIGHT)
                     .text_color(Colors::foreground())
                     .hover(|style| style.bg(Colors::muted()))
                     .when(is_open, |this| this.bg(Colors::muted()))

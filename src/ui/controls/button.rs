@@ -134,7 +134,7 @@ impl RenderOnce for Button {
             .border_color(border_color)
             .bg(bg)
             .text_sm()
-            .font_weight(gpui::FontWeight::SEMIBOLD)
+            .font_weight(gpui::FontWeight::LIGHT)
             .text_color(text_color)
             .when(!self.disabled, |this| {
                 this.cursor_pointer()

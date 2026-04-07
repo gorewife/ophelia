@@ -53,13 +53,26 @@ fn run() {
             ui::controls::text_field::init(cx);
 
             cx.text_system()
-                .add_fonts(vec![std::borrow::Cow::Owned(
-                    std::fs::read(concat!(
-                        env!("CARGO_MANIFEST_DIR"),
-                        "/assets/fonts/Inter-VariableFont_opsz,wght.ttf"
-                    ))
-                    .unwrap(),
-                )])
+                .add_fonts(
+                    [
+                        "IBMPlexSans-Light.ttf",
+                        "IBMPlexSans-Regular.ttf",
+                        "IBMPlexSans-Medium.ttf",
+                        "IBMPlexSans-SemiBold.ttf",
+                        "IBMPlexSans-Bold.ttf",
+                    ]
+                    .into_iter()
+                    .map(|filename| {
+                        std::borrow::Cow::Owned(
+                            std::fs::read(format!(
+                                "{}/assets/fonts/{filename}",
+                                env!("CARGO_MANIFEST_DIR")
+                            ))
+                            .unwrap(),
+                        )
+                    })
+                    .collect(),
+                )
                 .unwrap();
 
             let bounds = Bounds::centered(None, size(px(1280.), px(720.)), cx);

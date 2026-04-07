@@ -161,7 +161,7 @@ fn icon_option(
                     .top(px(3.0))
                     .right(px(4.0))
                     .text_xs()
-                    .font_weight(gpui::FontWeight::BOLD)
+                    .font_weight(gpui::FontWeight::NORMAL)
                     .text_color(Colors::active())
                     .child("•"),
             )
