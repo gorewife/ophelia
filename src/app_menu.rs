@@ -20,11 +20,19 @@
 use gpui::{Action, App, KeyBinding, Menu, MenuItem, OsAction, OwnedMenu, SharedString, actions};
 use rust_i18n::t;
 
+use crate::build_info::updater_controls_enabled;
 use crate::ui::controls::text_field;
 
 actions!(
     ophelia_menu,
-    [OpenMainWindow, OpenDownloadModal, OpenSettings, About, Quit]
+    [
+        OpenMainWindow,
+        OpenDownloadModal,
+        OpenSettings,
+        CheckForUpdates,
+        About,
+        Quit
+    ]
 );
 
 pub fn init(cx: &mut App) {
@@ -40,17 +48,25 @@ pub fn init(cx: &mut App) {
 
 pub fn build_menus() -> Vec<Menu> {
     if cfg!(target_os = "macos") {
+        let mut app_items = vec![
+            MenuItem::action(t!("menu.about").to_string(), About),
+            MenuItem::separator(),
+            MenuItem::action(t!("menu.settings").to_string(), OpenSettings),
+        ];
+        if updater_controls_enabled() {
+            app_items.push(MenuItem::action(
+                t!("menu.check_for_updates").to_string(),
+                CheckForUpdates,
+            ));
+        }
+        app_items.push(MenuItem::separator());
+        app_items.push(MenuItem::action(t!("menu.quit").to_string(), Quit));
+
         vec![
             Menu {
                 name: t!("app.name").to_string().into(),
                 disabled: false,
-                items: vec![
-                    MenuItem::action(t!("menu.about").to_string(), About),
-                    MenuItem::separator(),
-                    MenuItem::action(t!("menu.settings").to_string(), OpenSettings),
-                    MenuItem::separator(),
-                    MenuItem::action(t!("menu.quit").to_string(), Quit),
-                ],
+                items: app_items,
             },
             Menu {
                 name: t!("menu.file").to_string().into(),
@@ -73,16 +89,24 @@ pub fn build_menus() -> Vec<Menu> {
             },
         ]
     } else {
+        let mut file_items = vec![
+            MenuItem::action(t!("menu.new_download").to_string(), OpenDownloadModal),
+            MenuItem::action(t!("menu.settings").to_string(), OpenSettings),
+        ];
+        if updater_controls_enabled() {
+            file_items.push(MenuItem::action(
+                t!("menu.check_for_updates").to_string(),
+                CheckForUpdates,
+            ));
+        }
+        file_items.push(MenuItem::separator());
+        file_items.push(MenuItem::action(t!("menu.quit").to_string(), Quit));
+
         vec![
             Menu {
                 name: t!("menu.file").to_string().into(),
                 disabled: false,
-                items: vec![
-                    MenuItem::action(t!("menu.new_download").to_string(), OpenDownloadModal),
-                    MenuItem::action(t!("menu.settings").to_string(), OpenSettings),
-                    MenuItem::separator(),
-                    MenuItem::action(t!("menu.quit").to_string(), Quit),
-                ],
+                items: file_items,
             },
             edit_menu(),
             Menu {

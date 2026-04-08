@@ -20,4 +20,5 @@
 pub mod file_type_icon;
 pub mod icon;
 pub mod logo;
+pub mod progress_circle;
 pub mod resizable;

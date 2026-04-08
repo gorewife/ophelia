@@ -35,6 +35,7 @@ pub use crate::ui::controls::text_field::*;
 pub use crate::ui::primitives::file_type_icon::*;
 pub use crate::ui::primitives::icon::*;
 pub use crate::ui::primitives::logo::*;
+pub use crate::ui::primitives::progress_circle::*;
 pub use crate::ui::primitives::resizable::*;
 
 pub fn h_flex() -> Div {
