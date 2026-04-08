@@ -6,7 +6,7 @@ on:
 
 jobs:
   checks:
-    name: ${{ matrix.os }}
+    name: ci / macos
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
