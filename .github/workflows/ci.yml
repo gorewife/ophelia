@@ -28,6 +28,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: 1.93
           components: rustfmt
 
       - name: Cache cargo

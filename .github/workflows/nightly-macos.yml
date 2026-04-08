@@ -11,8 +11,17 @@ permissions:
 
 jobs:
   release-nightly:
-    runs-on: macos-latest
+    runs-on: ${{ matrix.runner }}
     environment: nightly-release
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - runner: macos-26
+            arch_slug: arm64
+          - runner: macos-26-intel
+            arch_slug: x86_64
     env:
       OPHELIA_RELEASE_CHANNEL: nightly
       OPHELIA_BUILD_COMMIT: ${{ github.sha }}
@@ -41,6 +50,8 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.93
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -49,16 +60,6 @@ jobs:
         run: |
           brew install minisign
           cargo install cargo-bundle --locked
-
-      - name: Detect arch
-        id: arch
-        run: |
-          arch_name="$(uname -m)"
-          if [ "$arch_name" = "arm64" ]; then
-            echo "slug=arm64" >> "$GITHUB_OUTPUT"
-          else
-            echo "slug=x86_64" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Import Apple signing certificate
         env:
@@ -83,7 +84,7 @@ jobs:
           APP_BUNDLE="$(find target/release/bundle -name 'Ophelia.app' | head -n 1)"
           test -n "$APP_BUNDLE"
           codesign --force --deep --options runtime --sign "$APPLE_SIGNING_IDENTITY" "$APP_BUNDLE"
-          ditto -c -k --keepParent --rsrc --sequesterRsrc "$APP_BUNDLE" "Ophelia-macos-${{ steps.arch.outputs.slug }}-notary.zip"
+          ditto -c -k --keepParent --rsrc --sequesterRsrc "$APP_BUNDLE" "Ophelia-macos-${{ matrix.arch_slug }}-notary.zip"
 
       - name: Notarize app bundle
         env:
@@ -91,7 +92,7 @@ jobs:
           APPLE_NOTARY_PASSWORD: ${{ secrets.APPLE_NOTARY_PASSWORD }}
           APPLE_NOTARY_TEAM_ID: ${{ secrets.APPLE_NOTARY_TEAM_ID }}
         run: |
-          xcrun notarytool submit "Ophelia-macos-${{ steps.arch.outputs.slug }}-notary.zip" \
+          xcrun notarytool submit "Ophelia-macos-${{ matrix.arch_slug }}-notary.zip" \
             --apple-id "$APPLE_NOTARY_APPLE_ID" \
             --password "$APPLE_NOTARY_PASSWORD" \
             --team-id "$APPLE_NOTARY_TEAM_ID" \
@@ -110,8 +111,8 @@ jobs:
           set -eu
           APP_BUNDLE="$(find target/release/bundle -name 'Ophelia.app' | head -n 1)"
           test -n "$APP_BUNDLE"
-          ditto -c -k --keepParent --rsrc --sequesterRsrc "$APP_BUNDLE" "Ophelia-macos-${{ steps.arch.outputs.slug }}.zip"
-          hdiutil create -volname "Ophelia" -srcfolder "$APP_BUNDLE" -ov -format UDZO "Ophelia-macos-${{ steps.arch.outputs.slug }}.dmg"
+          ditto -c -k --keepParent --rsrc --sequesterRsrc "$APP_BUNDLE" "Ophelia-macos-${{ matrix.arch_slug }}.zip"
+          hdiutil create -volname "Ophelia" -srcfolder "$APP_BUNDLE" -ov -format UDZO "Ophelia-macos-${{ matrix.arch_slug }}.dmg"
 
       - name: Notarize and staple DMG
         env:
@@ -119,27 +120,27 @@ jobs:
           APPLE_NOTARY_PASSWORD: ${{ secrets.APPLE_NOTARY_PASSWORD }}
           APPLE_NOTARY_TEAM_ID: ${{ secrets.APPLE_NOTARY_TEAM_ID }}
         run: |
-          xcrun notarytool submit "Ophelia-macos-${{ steps.arch.outputs.slug }}.dmg" \
+          xcrun notarytool submit "Ophelia-macos-${{ matrix.arch_slug }}.dmg" \
             --apple-id "$APPLE_NOTARY_APPLE_ID" \
             --password "$APPLE_NOTARY_PASSWORD" \
             --team-id "$APPLE_NOTARY_TEAM_ID" \
             --wait
-          xcrun stapler staple "Ophelia-macos-${{ steps.arch.outputs.slug }}.dmg"
-          xcrun stapler validate "Ophelia-macos-${{ steps.arch.outputs.slug }}.dmg"
+          xcrun stapler staple "Ophelia-macos-${{ matrix.arch_slug }}.dmg"
+          xcrun stapler validate "Ophelia-macos-${{ matrix.arch_slug }}.dmg"
 
       - name: Sign distributables with minisign
         env:
           MINISIGN_PRIVATE_KEY: ${{ secrets.MINISIGN_PRIVATE_KEY }}
         run: |
           printf '%s' "$MINISIGN_PRIVATE_KEY" > minisign.key
-          minisign -S -s minisign.key -m "Ophelia-macos-${{ steps.arch.outputs.slug }}.zip"
-          minisign -S -s minisign.key -m "Ophelia-macos-${{ steps.arch.outputs.slug }}.dmg"
+          minisign -S -s minisign.key -m "Ophelia-macos-${{ matrix.arch_slug }}.zip"
+          minisign -S -s minisign.key -m "Ophelia-macos-${{ matrix.arch_slug }}.dmg"
 
       - name: Compute zip metadata
         id: zip
         run: |
-          sha256="$(shasum -a 256 "Ophelia-macos-${{ steps.arch.outputs.slug }}.zip" | awk '{print $1}')"
-          size="$(stat -f%z "Ophelia-macos-${{ steps.arch.outputs.slug }}.zip")"
+          sha256="$(shasum -a 256 "Ophelia-macos-${{ matrix.arch_slug }}.zip" | awk '{print $1}')"
+          size="$(stat -f%z "Ophelia-macos-${{ matrix.arch_slug }}.zip")"
           echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
           echo "size=$size" >> "$GITHUB_OUTPUT"
 
@@ -151,10 +152,10 @@ jobs:
           prerelease: true
           make_latest: false
           files: |
-            Ophelia-macos-${{ steps.arch.outputs.slug }}.zip
-            Ophelia-macos-${{ steps.arch.outputs.slug }}.zip.minisig
-            Ophelia-macos-${{ steps.arch.outputs.slug }}.dmg
-            Ophelia-macos-${{ steps.arch.outputs.slug }}.dmg.minisig
+            Ophelia-macos-${{ matrix.arch_slug }}.zip
+            Ophelia-macos-${{ matrix.arch_slug }}.zip.minisig
+            Ophelia-macos-${{ matrix.arch_slug }}.dmg
+            Ophelia-macos-${{ matrix.arch_slug }}.dmg.minisig
 
       - name: Generate nightly manifest
         run: |
@@ -164,11 +165,11 @@ jobs:
             --pub-date "${{ env.OPHELIA_BUILD_TIMESTAMP }}" \
             --commit "${{ github.sha }}" \
             --notes-url "https://github.com/${{ github.repository }}/releases/tag/nightly" \
-            --asset-url "https://github.com/${{ github.repository }}/releases/download/nightly/Ophelia-macos-${{ steps.arch.outputs.slug }}.zip" \
+            --asset-url "https://github.com/${{ github.repository }}/releases/download/nightly/Ophelia-macos-${{ matrix.arch_slug }}.zip" \
             --asset-size "${{ steps.zip.outputs.size }}" \
             --sha256 "${{ steps.zip.outputs.sha256 }}" \
-            --minisign-url "https://github.com/${{ github.repository }}/releases/download/nightly/Ophelia-macos-${{ steps.arch.outputs.slug }}.zip.minisig" \
-            --output "dist/updates/macos/${{ steps.arch.outputs.slug }}/nightly.json"
+            --minisign-url "https://github.com/${{ github.repository }}/releases/download/nightly/Ophelia-macos-${{ matrix.arch_slug }}.zip.minisig" \
+            --output "dist/updates/macos/${{ matrix.arch_slug }}/nightly.json"
 
       - name: Checkout website repo
         uses: actions/checkout@v5
@@ -179,12 +180,12 @@ jobs:
 
       - name: Publish nightly manifest to website repo
         run: |
-          mkdir -p "website/updates/macos/${{ steps.arch.outputs.slug }}"
-          cp "dist/updates/macos/${{ steps.arch.outputs.slug }}/nightly.json" "website/updates/macos/${{ steps.arch.outputs.slug }}/nightly.json"
+          mkdir -p "website/updates/macos/${{ matrix.arch_slug }}"
+          cp "dist/updates/macos/${{ matrix.arch_slug }}/nightly.json" "website/updates/macos/${{ matrix.arch_slug }}/nightly.json"
           cd website
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "updates/macos/${{ steps.arch.outputs.slug }}/nightly.json"
+          git add "updates/macos/${{ matrix.arch_slug }}/nightly.json"
           git diff --cached --quiet && exit 0
-          git commit -m "Update Ophelia nightly manifest (${GITHUB_SHA::7})"
+          git commit -m "Update Ophelia nightly manifest (${GITHUB_SHA::7}, ${{ matrix.arch_slug }})"
           git push
