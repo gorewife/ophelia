@@ -24,3 +24,4 @@ pub mod sidebar;
 pub mod stats_bar;
 pub mod transfer_row;
 pub mod transfers_list;
+pub mod update_button;

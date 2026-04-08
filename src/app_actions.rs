@@ -26,6 +26,7 @@ use crate::app::Downloads;
 use crate::app_menu;
 use crate::platform;
 use crate::tray;
+use crate::updater;
 use crate::views::main::main_window::MainWindow;
 use crate::views::settings::{SettingsClosed, SettingsWindow};
 
@@ -60,6 +61,7 @@ pub fn init(downloads: Entity<Downloads>, cx: &mut App) {
 
     cx.on_action(open_main_window);
     cx.on_action(open_settings);
+    cx.on_action(check_for_updates);
     cx.on_action(open_about);
     cx.on_action(open_download_modal);
     cx.on_action(quit);
@@ -215,6 +217,7 @@ fn open_settings_impl(cx: &mut App) {
             let _ = main_window.update(cx, |this, _, cx| {
                 this.apply_settings(event.settings.clone(), cx);
             });
+            updater::apply_settings(event.settings.clone(), cx);
             tray::refresh(cx, true);
 
             if cx.has_global::<AppState>() {
@@ -234,6 +237,10 @@ fn open_settings_impl(cx: &mut App) {
 
 fn open_about(_: &app_menu::About, cx: &mut App) {
     open_about_impl(cx);
+}
+
+fn check_for_updates(_: &app_menu::CheckForUpdates, cx: &mut App) {
+    updater::manual_check(cx);
 }
 
 fn open_download_modal(_: &app_menu::OpenDownloadModal, cx: &mut App) {

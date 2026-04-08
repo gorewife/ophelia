@@ -28,6 +28,7 @@ use crate::engine::DownloadId;
 use crate::settings::Settings;
 use crate::theme::{APP_FONT_FAMILY, Spacing};
 use crate::ui::prelude::*;
+use crate::updater;
 use crate::views::overlays::about_modal::AboutLayer;
 use crate::views::overlays::download_modal::DownloadModalLayer;
 
@@ -36,6 +37,7 @@ use super::history::HistoryView;
 use super::sidebar::Sidebar;
 use super::stats_bar::StatsBar;
 use super::transfers_list::{TransferList, TransferListSelectionChanged};
+use super::update_button::UpdateHeaderButton;
 
 const HISTORY_NAV_INDEX: usize = 1;
 const SIDEBAR_MIN_WIDTH: f32 = 200.0;
@@ -89,6 +91,9 @@ impl MainWindow {
             },
         )
         .detach();
+        if let Some(updater) = updater::entity(cx) {
+            cx.observe(&updater, |_, _, cx| cx.notify()).detach();
+        }
 
         Self {
             menu_bar,
@@ -349,11 +354,18 @@ impl MainWindow {
     }
 
     fn render_header(&self, _cx: &mut Context<Self>) -> impl IntoElement {
+        let update_button = updater::status(_cx)
+            .filter(UpdateHeaderButton::should_render)
+            .map(UpdateHeaderButton::new);
+
         if cfg!(target_os = "macos") {
-            WindowHeader::empty().into_any_element()
+            WindowHeader::empty()
+                .when_some(update_button, |this, button| this.trailing(button))
+                .into_any_element()
         } else {
             WindowHeader::empty()
                 .leading(self.menu_bar.clone())
+                .when_some(update_button, |this, button| this.trailing(button))
                 .into_any_element()
         }
     }

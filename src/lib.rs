@@ -17,6 +17,7 @@
 **       じしf_,)ノ
 **************************************************/
 
+pub mod build_info;
 pub mod engine;
 pub mod ipc;
 pub mod platform;

@@ -3512,6 +3512,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "minisign-verify"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22f9645cb765ea72b8111f36c522475d2daa0d22c957a9826437e97534bc4e9e"
+
+[[package]]
 name = "miniz_oxide"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3887,14 +3893,17 @@ dependencies = [
  "futures",
  "gpui-ce",
  "libc",
+ "minisign-verify",
  "proptest",
  "reqwest",
  "rusqlite",
  "rust-i18n",
+ "semver",
  "serde",
  "serde_json",
  "sha2 0.11.0",
  "tempfile",
+ "time",
  "tokio",
  "tokio-util",
  "tower-http",
@@ -4621,6 +4630,7 @@ dependencies = [
  "base64",
  "bytes",
  "encoding_rs",
+ "futures-channel",
  "futures-core",
  "futures-util",
  "h2",

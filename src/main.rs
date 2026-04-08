@@ -23,6 +23,7 @@ mod app;
 mod app_actions;
 mod app_menu;
 mod assets;
+mod build_info;
 mod engine;
 mod ipc;
 mod logging;
@@ -31,6 +32,7 @@ mod settings;
 mod theme;
 mod tray;
 mod ui;
+mod updater;
 mod views;
 
 use assets::Assets;
@@ -52,6 +54,7 @@ fn run() {
 
         app_menu::init(cx);
         app_actions::init(downloads, cx);
+        updater::init(initial_settings.clone(), cx);
         tray::init(cx);
         ui::chrome::modal::bind_actions(cx);
         ui::controls::number_input::init(cx);

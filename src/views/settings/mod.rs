@@ -33,8 +33,8 @@ use gpui::{
 use rust_i18n::t;
 
 use crate::settings::{
-    CollisionStrategy, DestinationRule, HttpDownloadOrderingMode, Settings, canonical_language,
-    default_destination_rules,
+    CollisionStrategy, DestinationRule, HttpDownloadOrderingMode, Settings, UpdateChannel,
+    canonical_language, default_destination_rules,
 };
 use crate::theme::APP_FONT_FAMILY;
 use crate::ui::prelude::*;
@@ -304,6 +304,20 @@ impl SettingsWindow {
     pub(super) fn set_notifications_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
         if self.settings.notifications_enabled != enabled {
             self.settings.notifications_enabled = enabled;
+            cx.notify();
+        }
+    }
+
+    pub(super) fn set_auto_update_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        if self.settings.auto_update_enabled != enabled {
+            self.settings.auto_update_enabled = enabled;
+            cx.notify();
+        }
+    }
+
+    pub(super) fn set_update_channel(&mut self, channel: UpdateChannel, cx: &mut Context<Self>) {
+        if self.settings.update_channel != channel {
+            self.settings.update_channel = channel;
             cx.notify();
         }
     }
@@ -825,6 +839,30 @@ mod tests {
 
             let draft = settings.draft_settings(cx);
             assert!(!draft.notifications_enabled);
+        });
+    }
+
+    #[test]
+    fn general_update_controls_update_draft_settings() {
+        let mut app = TestApp::new();
+        let settings = Settings::default();
+
+        let bounds = Bounds::from_corners(point(px(0.0), px(0.0)), point(px(800.0), px(600.0)));
+        let mut window = app.open_window_with_options(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(bounds)),
+                ..Default::default()
+            },
+            move |_window: &mut Window, cx| SettingsWindow::new_with_settings(settings.clone(), cx),
+        );
+
+        window.update(|settings: &mut SettingsWindow, _window, cx| {
+            settings.set_auto_update_enabled(false, cx);
+            settings.set_update_channel(UpdateChannel::Nightly, cx);
+
+            let draft = settings.draft_settings(cx);
+            assert!(!draft.auto_update_enabled);
+            assert_eq!(draft.update_channel, UpdateChannel::Nightly);
         });
     }
 }

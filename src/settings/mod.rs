@@ -37,6 +37,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::build_info::{BuildInfo, ReleaseChannel};
 use crate::platform::paths::{app_config_dir, default_download_dir};
 
 pub use destination_presets::default_destination_rules;
@@ -61,6 +62,14 @@ pub enum HttpDownloadOrderingMode {
     Balanced,
     FileSpecific,
     Sequential,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdateChannel {
+    #[default]
+    Stable,
+    Nightly,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -99,6 +108,10 @@ pub struct Settings {
     pub sequential_download_extensions: Vec<String>,
     /// Master switch for in-app popup notifications.
     pub notifications_enabled: bool,
+    /// Whether production builds should automatically poll for updates.
+    pub auto_update_enabled: bool,
+    /// User-selected update feed channel.
+    pub update_channel: UpdateChannel,
 }
 
 impl Default for Settings {
@@ -117,6 +130,8 @@ impl Default for Settings {
             http_download_ordering_mode: HttpDownloadOrderingMode::FileSpecific,
             sequential_download_extensions: default_sequential_download_extensions(),
             notifications_enabled: true,
+            auto_update_enabled: true,
+            update_channel: default_update_channel(),
         }
     }
 }
@@ -181,6 +196,13 @@ pub fn default_sequential_download_extensions() -> Vec<String> {
     [".mkv"].into_iter().map(str::to_string).collect()
 }
 
+pub fn default_update_channel() -> UpdateChannel {
+    match BuildInfo::current().channel {
+        ReleaseChannel::Nightly => UpdateChannel::Nightly,
+        _ => UpdateChannel::Stable,
+    }
+}
+
 fn default_download_root() -> PathBuf {
     default_download_dir()
 }
@@ -216,6 +238,8 @@ mod tests {
             default_sequential_download_extensions()
         );
         assert!(Settings::default().notifications_enabled);
+        assert!(Settings::default().auto_update_enabled);
+        assert_eq!(Settings::default().update_channel, default_update_channel());
     }
 
     #[test]
@@ -246,6 +270,8 @@ mod tests {
             default_sequential_download_extensions()
         );
         assert!(settings.notifications_enabled);
+        assert!(settings.auto_update_enabled);
+        assert_eq!(settings.update_channel, default_update_channel());
     }
 
     #[test]
