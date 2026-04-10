@@ -90,7 +90,16 @@ jobs:
           echo "Using signing identity: $APPLE_SIGNING_IDENTITY"
           security find-identity -v -p codesigning
           echo "Bundle file count: $(find "$APP_BUNDLE" | wc -l | tr -d ' ')"
-          time codesign --force --options runtime --timestamp=none --verbose=4 --sign "$APPLE_SIGNING_IDENTITY" "$APP_BUNDLE"
+          for attempt in 1 2 3; do
+            if time codesign --force --options runtime --timestamp --verbose=4 --sign "$APPLE_SIGNING_IDENTITY" "$APP_BUNDLE"; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            echo "codesign failed; retrying in 20s (attempt $attempt/3)"
+            sleep 20
+          done
           time codesign --verify --strict "$APP_BUNDLE"
           time ditto -c -k --keepParent --rsrc --sequesterRsrc "$APP_BUNDLE" "Ophelia-macos-${{ matrix.arch_slug }}-notary.zip"
           ls -lh "Ophelia-macos-${{ matrix.arch_slug }}-notary.zip"
@@ -101,11 +110,23 @@ jobs:
           APPLE_NOTARY_PASSWORD: ${{ secrets.APPLE_NOTARY_PASSWORD }}
           APPLE_NOTARY_TEAM_ID: ${{ secrets.APPLE_NOTARY_TEAM_ID }}
         run: |
-          xcrun notarytool submit "Ophelia-macos-${{ matrix.arch_slug }}-notary.zip" \
+          result="$(xcrun notarytool submit "Ophelia-macos-${{ matrix.arch_slug }}-notary.zip" \
             --apple-id "$APPLE_NOTARY_APPLE_ID" \
             --password "$APPLE_NOTARY_PASSWORD" \
             --team-id "$APPLE_NOTARY_TEAM_ID" \
-            --wait
+            --wait \
+            --output-format json)"
+          echo "$result"
+          status="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])' <<<"$result")"
+          if [ "$status" != "Accepted" ]; then
+            submission_id="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<<"$result")"
+            echo "Notarization failed with status: $status"
+            xcrun notarytool log "$submission_id" \
+              --apple-id "$APPLE_NOTARY_APPLE_ID" \
+              --password "$APPLE_NOTARY_PASSWORD" \
+              --team-id "$APPLE_NOTARY_TEAM_ID" || true
+            exit 1
+          fi
 
       - name: Staple and validate app bundle
         run: |
