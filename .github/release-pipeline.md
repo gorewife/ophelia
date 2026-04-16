@@ -4,6 +4,8 @@ This document is the maintainer runbook for Ophelia's macOS CI/CD and updater pi
 
 ## Current shape
 
+## buh
+
 Ophelia currently ships macOS-only updater builds.
 
 - GitHub Releases host signed binaries.
@@ -21,9 +23,9 @@ File: `.github/workflows/ci.yml`
 - macOS only
 - Checks out the pinned `gpui-ce` sibling revision
 - Runs:
-  - `cargo fmt --all -- --check`
-  - `cargo check --locked`
-  - `cargo test --locked`
+    - `cargo fmt --all -- --check`
+    - `cargo check --locked`
+    - `cargo test --locked`
 
 The branch-protection-facing job name is intentionally `ci / macos`.
 
@@ -123,9 +125,9 @@ Recommended future cleanup:
 - move `OPHELIA_MINISIGN_PUBKEY` out of secrets because it is public material
 - move `APPLE_SIGNING_IDENTITY` out of secrets because it is not secret
 - keep the old Apple ID notary secrets only until the first successful Stable release after the API-key migration, then remove them:
-  - `APPLE_NOTARY_APPLE_ID`
-  - `APPLE_NOTARY_PASSWORD`
-  - `APPLE_NOTARY_TEAM_ID`
+    - `APPLE_NOTARY_APPLE_ID`
+    - `APPLE_NOTARY_PASSWORD`
+    - `APPLE_NOTARY_TEAM_ID`
 - delete the old `WEBSITE_REPO` secret if it still exists; the workflows now use a repo variable or the default repo path
 
 GitHub does not allow repository secret values to be read back out. That means moving `WEBSITE_DEPLOY_TOKEN` from a repo secret into environment secrets is a manual copy step unless the token value is already available outside GitHub.
