@@ -120,6 +120,8 @@ The macOS release/update pipeline now has a dedicated runbook:
 
 Read that before changing GitHub Actions, release secrets, website manifest publication, or the pinned `gpui-ce` revision.
 
+That includes Apple signing and notarization auth changes. Keep those details in the runbook instead of scattering them across PR comments or workflow history.
+
 ## Frontend Structure
 
 The frontend is organized around a few simple layers:
