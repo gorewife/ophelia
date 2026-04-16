@@ -297,7 +297,7 @@ jobs:
           minisign -S -s "$MINISIGN_KEY_PATH" -m "Ophelia-macos-${{ matrix.arch_slug }}.dmg"
 
       - name: Upload release assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: macos-release-${{ matrix.arch_slug }}
           if-no-files-found: error
@@ -339,7 +339,7 @@ jobs:
           ref: ${{ github.event.release.tag_name }}
 
       - name: Download release assets
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release-assets
           pattern: macos-release-*
