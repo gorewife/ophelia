@@ -119,17 +119,24 @@ jobs:
         env:
           APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_NOTARY_API_KEY_P8_B64: ${{ secrets.APPLE_NOTARY_API_KEY_P8_B64 }}
+          APPLE_NOTARY_API_KEY_ID: ${{ secrets.APPLE_NOTARY_API_KEY_ID }}
+          APPLE_NOTARY_API_ISSUER_ID: ${{ secrets.APPLE_NOTARY_API_ISSUER_ID }}
         shell: bash
         run: |
           set -euo pipefail
           certificate_path="${RUNNER_TEMP}/ophelia-certificate.p12"
           keychain_path="${RUNNER_TEMP}/ophelia-build.keychain-db"
+          notary_key_path="${RUNNER_TEMP}/ophelia-notary-authkey.p8"
           echo "$APPLE_CERTIFICATE_P12" | base64 --decode > "$certificate_path"
+          echo "$APPLE_NOTARY_API_KEY_P8_B64" | base64 --decode > "$notary_key_path"
           keychain_password="$(uuidgen)"
           {
             echo "APPLE_BUILD_KEYCHAIN=$keychain_path"
             echo "APPLE_BUILD_KEYCHAIN_PASSWORD=$keychain_password"
             echo "APPLE_CERTIFICATE_PATH=$certificate_path"
+            echo "APPLE_NOTARY_API_KEY_PATH=$notary_key_path"
+            echo "APPLE_NOTARY_PROFILE=ophelia-notary"
             echo "MINISIGN_KEY_PATH=${RUNNER_TEMP}/ophelia-minisign.key"
           } >> "$GITHUB_ENV"
           security create-keychain -p "$keychain_password" "$keychain_path"
@@ -138,6 +145,12 @@ jobs:
           security set-keychain-settings "$keychain_path"
           security import "$certificate_path" -k "$keychain_path" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain_path"
+          xcrun notarytool store-credentials "$APPLE_NOTARY_PROFILE" \
+            --key "$notary_key_path" \
+            --key-id "$APPLE_NOTARY_API_KEY_ID" \
+            --issuer "$APPLE_NOTARY_API_ISSUER_ID" \
+            --validate \
+            --keychain "$keychain_path"
 
       - name: Build app bundle
         run: cargo bundle --release
@@ -180,17 +193,12 @@ jobs:
           ls -lh "Ophelia-macos-${{ matrix.arch_slug }}-notary.zip"
 
       - name: Notarize app bundle
-        env:
-          APPLE_NOTARY_APPLE_ID: ${{ secrets.APPLE_NOTARY_APPLE_ID }}
-          APPLE_NOTARY_PASSWORD: ${{ secrets.APPLE_NOTARY_PASSWORD }}
-          APPLE_NOTARY_TEAM_ID: ${{ secrets.APPLE_NOTARY_TEAM_ID }}
         shell: bash
         run: |
           set -euo pipefail
           result="$(xcrun notarytool submit "Ophelia-macos-${{ matrix.arch_slug }}-notary.zip" \
-            --apple-id "$APPLE_NOTARY_APPLE_ID" \
-            --password "$APPLE_NOTARY_PASSWORD" \
-            --team-id "$APPLE_NOTARY_TEAM_ID" \
+            -p "$APPLE_NOTARY_PROFILE" \
+            --keychain "$APPLE_BUILD_KEYCHAIN" \
             --wait \
             --output-format json)"
           echo "$result"
@@ -199,9 +207,8 @@ jobs:
             submission_id="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<<"$result")"
             echo "Notarization failed with status: $status"
             xcrun notarytool log "$submission_id" \
-              --apple-id "$APPLE_NOTARY_APPLE_ID" \
-              --password "$APPLE_NOTARY_PASSWORD" \
-              --team-id "$APPLE_NOTARY_TEAM_ID" || true
+              -p "$APPLE_NOTARY_PROFILE" \
+              --keychain "$APPLE_BUILD_KEYCHAIN" || true
             exit 1
           fi
 
@@ -234,17 +241,12 @@ jobs:
           hdiutil create -volname "Ophelia" -srcfolder "$APP_BUNDLE" -ov -format UDZO "Ophelia-macos-${{ matrix.arch_slug }}.dmg"
 
       - name: Notarize and staple DMG
-        env:
-          APPLE_NOTARY_APPLE_ID: ${{ secrets.APPLE_NOTARY_APPLE_ID }}
-          APPLE_NOTARY_PASSWORD: ${{ secrets.APPLE_NOTARY_PASSWORD }}
-          APPLE_NOTARY_TEAM_ID: ${{ secrets.APPLE_NOTARY_TEAM_ID }}
         shell: bash
         run: |
           set -euo pipefail
           xcrun notarytool submit "Ophelia-macos-${{ matrix.arch_slug }}.dmg" \
-            --apple-id "$APPLE_NOTARY_APPLE_ID" \
-            --password "$APPLE_NOTARY_PASSWORD" \
-            --team-id "$APPLE_NOTARY_TEAM_ID" \
+            -p "$APPLE_NOTARY_PROFILE" \
+            --keychain "$APPLE_BUILD_KEYCHAIN" \
             --wait
           for attempt in 1 2 3 4 5; do
             if xcrun stapler staple "Ophelia-macos-${{ matrix.arch_slug }}.dmg"; then
@@ -288,7 +290,7 @@ jobs:
           if [ -n "${APPLE_BUILD_KEYCHAIN:-}" ]; then
             security delete-keychain "$APPLE_BUILD_KEYCHAIN" || true
           fi
-          rm -f "${APPLE_CERTIFICATE_PATH:-}" "${MINISIGN_KEY_PATH:-}"
+          rm -f "${APPLE_CERTIFICATE_PATH:-}" "${APPLE_NOTARY_API_KEY_PATH:-}" "${MINISIGN_KEY_PATH:-}"
 
   publish:
     name: Publish nightly

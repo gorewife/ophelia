@@ -105,17 +105,27 @@ Repository secrets currently used by the workflows:
 - `APPLE_CERTIFICATE_P12`
 - `APPLE_CERTIFICATE_PASSWORD`
 - `APPLE_SIGNING_IDENTITY`
-- `APPLE_NOTARY_APPLE_ID`
-- `APPLE_NOTARY_PASSWORD`
-- `APPLE_NOTARY_TEAM_ID`
+- `APPLE_NOTARY_API_KEY_P8_B64`
+- `APPLE_NOTARY_API_KEY_ID`
+- `APPLE_NOTARY_API_ISSUER_ID`
 - `MINISIGN_PRIVATE_KEY`
 - `OPHELIA_MINISIGN_PUBKEY`
-- `WEBSITE_DEPLOY_TOKEN`
+
+The notarization key should be a Team App Store Connect API key. Store the `.p8` contents base64-encoded in `APPLE_NOTARY_API_KEY_P8_B64`.
+
+Environment secrets currently used by the workflows:
+
+- `WEBSITE_DEPLOY_TOKEN` in `nightly-release`
+- `WEBSITE_DEPLOY_TOKEN` in `stable-release`
 
 Recommended future cleanup:
 
 - move `OPHELIA_MINISIGN_PUBKEY` out of secrets because it is public material
 - move `APPLE_SIGNING_IDENTITY` out of secrets because it is not secret
+- keep the old Apple ID notary secrets only until the first successful Stable release after the API-key migration, then remove them:
+  - `APPLE_NOTARY_APPLE_ID`
+  - `APPLE_NOTARY_PASSWORD`
+  - `APPLE_NOTARY_TEAM_ID`
 - delete the old `WEBSITE_REPO` secret if it still exists; the workflows now use a repo variable or the default repo path
 
 GitHub does not allow repository secret values to be read back out. That means moving `WEBSITE_DEPLOY_TOKEN` from a repo secret into environment secrets is a manual copy step unless the token value is already available outside GitHub.
@@ -167,9 +177,11 @@ They also print Apple notarization logs on non-accepted app notarization.
 
 Still recommended:
 
-- migrate from Apple ID + app password to App Store Connect API key credentials for `notarytool`
+- use a Team App Store Connect API key for `notarytool`
 - keep the `.p12` export limited to the real `Developer ID Application` identity only
 - keep the minisign private key passwordless in CI
+
+The workflows store the notary credentials in the temporary build keychain with `xcrun notarytool store-credentials`, using a temporary `.p8` file decoded from `APPLE_NOTARY_API_KEY_P8_B64`. The temp key file is deleted in cleanup.
 
 ## Observability and debugging
 
