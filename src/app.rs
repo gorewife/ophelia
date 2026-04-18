@@ -509,7 +509,6 @@ impl Downloads {
         self.delete_artifact(id, cx);
     }
 
-    /// Open the containing folder for a live transfer's destination path.
     pub fn open_destination_folder(&mut self, id: DownloadId, _cx: &mut Context<Self>) {
         let Some(idx) = self.index_of(id) else {
             return;
@@ -533,7 +532,6 @@ impl Downloads {
         }
     }
 
-    /// Samples app-session metrics once per second (every 10 × 100 ms polls).
     fn tick_metrics(&mut self) {
         self.poll_ticks = self.poll_ticks.wrapping_add(1);
         if self.poll_ticks % 10 == 0 {
