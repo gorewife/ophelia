@@ -15,8 +15,10 @@ Please disclaim any use of generative AI in your code, we will not accept PRs wi
 
 If you add user-visible strings, make sure you wire them thru `rust-i18n`.
 
-## Before Opening a PR, run
+## Make sure you to run
 
 - `cargo fmt`
 - `cargo check`
 - `cargo test`
+
+hey psst, use the kitty script.
